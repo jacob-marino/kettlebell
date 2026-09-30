@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Kettlebell Session</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#E6E9EC; --surface:#F6F7F8; --ink:#1F2328; --muted:#5B636C; --line:#CDD2D8;
+  --c-warm:#E3B21F; --c-work:#2F6FDB; --c-cool:#D94A8C; --c-rest:#2E9E5B;
+  --on-warm:#1F2328;
+  --display:"Barlow Condensed","Arial Narrow","Roboto Condensed",sans-serif;
+  --body:"Barlow","Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#191C20; --surface:#23272D; --ink:#ECEEF0; --muted:#9AA3AD; --line:#343A42;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#191C20; --surface:#23272D; --ink:#ECEEF0; --muted:#9AA3AD; --line:#343A42;
+}
+*,*::before,*::after{box-sizing:inherit}
+html{height:100%;scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;min-height:100%;background:var(--bg);color:var(--ink);font-family:var(--body);font-size:17px;line-height:1.45;-webkit-font-smoothing:antialiased}
+main{max-width:560px;margin:0 auto;padding:20px 18px 150px}
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible,a:focus-visible{outline:3px solid var(--c-work);outline-offset:2px}
+
+/* Day strip */
+.days{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:22px}
+.day{border:0;background:transparent;padding:8px 0 10px;border-radius:10px;font-family:var(--display);font-weight:600;font-size:17px;color:var(--muted);position:relative}
+.day[aria-pressed="true"]{background:var(--ink);color:var(--bg)}
+.day.today::after{content:"";position:absolute;left:50%;bottom:3px;width:5px;height:5px;margin-left:-2.5px;border-radius:50%;background:var(--c-work)}
+.day[aria-pressed="true"].today::after{background:var(--bg)}
+
+h1{font-family:var(--display);font-weight:700;font-size:44px;line-height:1;margin:0;letter-spacing:.2px}
+.sub{margin:6px 0 0;color:var(--muted);font-size:17px}
+
+/* Session timer */
+.timer{margin:22px 0 26px;background:var(--surface);border-radius:20px;padding:20px 18px 18px}
+.phase{display:flex;align-items:center;gap:8px;font-weight:600;font-size:17px}
+.phase .dot{width:12px;height:12px;border-radius:50%;background:var(--phase,var(--c-warm))}
+.clock{font-family:var(--display);font-weight:700;font-variant-numeric:tabular-nums;font-size:clamp(84px,27vw,132px);line-height:.9;margin:6px 0 4px;letter-spacing:-1px}
+.total{color:var(--muted);font-size:15px;margin:0 0 14px}
+.bar{display:flex;gap:4px;height:10px;margin-bottom:16px}
+.seg{position:relative;border-radius:5px;background:var(--line);overflow:hidden}
+.seg i{position:absolute;inset:0 auto 0 0;width:0;background:var(--c)}
+.seglabels{display:flex;gap:4px;margin:-10px 0 16px;font-size:13px;color:var(--muted)}
+.seglabels span{white-space:nowrap}
+.seglabels span:last-child{text-align:right}
+.controls{display:flex;gap:10px}
+.btn{border:0;border-radius:14px;padding:14px 18px;font-weight:600;font-size:17px;background:var(--line);color:var(--ink)}
+.btn.primary{flex:1;background:var(--ink);color:var(--bg)}
+
+/* Voice */
+.voice{margin-top:14px;padding-top:14px;border-top:1px solid var(--line)}
+.voice .btn{width:100%}
+.voice .btn[aria-pressed="true"]{background:var(--c-rest);color:#fff}
+.voicehint{margin:8px 0 0;font-size:14px;color:var(--muted)}
+
+/* Auto rest */
+.auto{margin-top:18px;background:var(--surface);border-radius:16px;padding:16px}
+.auto h3{font-family:var(--display);font-weight:700;font-size:22px;margin:0 0 4px}
+.autohelp{margin:0 0 12px;color:var(--muted);font-size:15px}
+.len{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.len .lbl{flex:1;font-weight:600}
+.len .val{font-family:var(--display);font-weight:700;font-size:26px;min-width:58px;text-align:center;font-variant-numeric:tabular-nums}
+.len .btn{padding:8px 14px}
+.autostatus{font-weight:600;margin:0 0 12px;min-height:1.4em}
+.auto .btn.primary{width:100%}
+.auto .btn.primary[aria-pressed="true"]{background:var(--c-rest);color:#fff}
+
+/* Big rest button */
+body.big main{padding-bottom:48vh}
+body.big .restinner{min-height:44vh;flex-direction:column;justify-content:center;text-align:center;gap:10px;padding:20px;cursor:pointer}
+body.big .restclock{font-size:clamp(72px,22vw,120px)}
+body.big .restlabel{font-size:18px;opacity:.9}
+body.big .restbtn{margin:0}
+body.big:not(.resting) .restbtn{display:none}
+.voice .btn + .btn{margin-top:8px}
+
+/* Lists */
+section.block{margin:0 0 26px;padding-left:14px;border-left:4px solid var(--line);transition:border-color .3s}
+section.block.active{border-left-color:var(--phase)}
+h2{font-family:var(--display);font-weight:700;font-size:28px;line-height:1.05;margin:0}
+.meta{color:var(--muted);margin:4px 0 10px;font-size:16px}
+.video{display:inline-block;color:var(--c-work);font-weight:600;text-decoration:none;margin-bottom:8px}
+.video:hover{text-decoration:underline}
+ul.ex{list-style:none;margin:0;padding:0}
+ul.ex li{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:11px 0;border-bottom:1px solid var(--line)}
+ul.ex li:last-child{border-bottom:0}
+.name{font-weight:600}
+.reps{display:block;color:var(--muted);font-size:15px;font-weight:400}
+.kgs{display:flex;align-items:center;gap:5px;flex-shrink:0;padding-top:2px}
+.kg{font-family:var(--display);font-weight:700;font-size:15px;padding:3px 8px;border-radius:999px;background:var(--k);color:#fff;white-space:nowrap}
+.kg.k16{color:var(--on-warm)}
+.or{color:var(--muted);font-size:13px}
+.finish{margin:10px 0 0;color:var(--muted)}
+
+/* Rounds */
+.rounds{display:flex;align-items:center;gap:12px;margin:14px 0 4px}
+.rounds .count{font-family:var(--display);font-weight:700;font-size:26px;font-variant-numeric:tabular-nums;min-width:74px}
+.rounds .btn{padding:10px 14px}
+
+/* Rest bar */
+.rest{position:fixed;left:0;right:0;bottom:0;padding:0 14px calc(12px + env(safe-area-inset-bottom,0px));pointer-events:none}
+.restinner{pointer-events:auto;max-width:560px;margin:0 auto;position:relative;overflow:hidden;border-radius:18px;background:var(--ink);color:var(--bg);display:flex;align-items:center;gap:14px;padding:12px 12px 12px 18px;box-shadow:0 6px 24px rgba(0,0,0,.18)}
+.restfill{position:absolute;inset:0 auto 0 0;width:0;background:var(--c-rest);opacity:.9}
+.restinner>*{position:relative}
+.restlabel{font-size:14px;opacity:.8;line-height:1.1}
+.restclock{font-family:var(--display);font-weight:700;font-size:40px;line-height:1;font-variant-numeric:tabular-nums}
+.restbtn{margin-left:auto;border:0;border-radius:12px;padding:13px 16px;font-weight:600;background:var(--bg);color:var(--ink)}
+
+@media (prefers-reduced-motion:reduce){section.block{transition:none}}
+</style>
+</head>
+<body>
+<main>
+  <nav class="days" id="days" aria-label="Choose a day"></nav>
+
+  <header>
+    <h1 id="dayName">Today</h1>
+    <p class="sub" id="dayWorkout"></p>
+  </header>
+
+  <div class="timer" id="timer">
+    <div class="phase"><span class="dot" id="phaseDot"></span><span id="phaseName">Warm-up</span></div>
+    <div class="clock" id="clock" role="timer" aria-label="Time left in this part">5:00</div>
+    <p class="total" id="total">30:00 left in the session</p>
+    <div class="bar" id="bar"></div>
+    <div class="seglabels" id="seglabels"></div>
+    <div class="controls">
+      <button class="btn primary" id="startBtn">Start session</button>
+      <button class="btn" id="resetBtn">Reset</button>
+    </div>
+    <div class="voice">
+      <button class="btn" id="voiceBtn" aria-pressed="false">Turn on voice commands</button>
+      <button class="btn" id="bigBtn" aria-pressed="false">Turn on big rest button</button>
+      <p class="voicehint" id="voiceHint">Say “rest” to start the rest timer, “stop” to end it, or “round” to count a round.</p>
+    </div>
+    <p class="sr" id="announce" aria-live="polite" style="position:absolute;left:-9999px"></p>
+  </div>
+
+  <section class="block" id="warmBlock">
+    <h2>Warm-up</h2>
+    <p class="meta">5 minutes, 2 rounds with 8 kg</p>
+    <a class="video" id="warmVideo" target="_blank" rel="noopener">Watch the warm-up video</a>
+    <ul class="ex" id="warmList"></ul>
+  </section>
+
+  <section class="block" id="workBlock">
+    <h2 id="workTitle">Workout</h2>
+    <p class="meta" id="workMeta"></p>
+    <a class="video" id="workVideo" target="_blank" rel="noopener">Watch the workout video</a>
+    <ul class="ex" id="workList"></ul>
+    <div class="rounds">
+      <span class="count" id="roundCount">0 / 4</span>
+      <span style="color:var(--muted);font-size:15px;flex:1">rounds done</span>
+      <button class="btn" id="roundMinus" aria-label="Remove a round">−</button>
+      <button class="btn" id="roundPlus">Round done</button>
+    </div>
+    <div class="auto">
+      <h3>Auto rest</h3>
+      <p class="autohelp">Set how long one round takes. The app starts your 60 s rest after each round, then starts the next round, and counts rounds for you.</p>
+      <div class="len">
+        <span class="lbl">Round length</span>
+        <button class="btn" id="lenMinus" aria-label="Shorter rounds">−</button>
+        <span class="val" id="lenVal">3:00</span>
+        <button class="btn" id="lenPlus" aria-label="Longer rounds">+</button>
+      </div>
+      <p class="autostatus" id="autoStatus" aria-live="polite"></p>
+      <button class="btn primary" id="autoBtn" aria-pressed="false">Start auto rounds</button>
+    </div>
+  </section>
+
+  <section class="block" id="coolBlock">
+    <h2>Finish</h2>
+    <p class="finish" id="finishText">3-min stretch</p>
+  </section>
+</main>
+
+<div class="rest">
+  <div class="restinner" id="restArea">
+    <div class="restfill" id="restFill"></div>
+    <div>
+      <div class="restlabel" id="restLabel">Rest</div>
+      <div class="restclock" id="restClock">1:00</div>
+    </div>
+    <button class="restbtn" id="restBtn">Start 60 s rest</button>
+  </div>
+</div>
+
+<script>
+const KG = {8:'#D94A8C',12:'#2F6FDB',16:'#E3B21F',24:'#2E9E5B'};
+
+const WARMUP = {
+  video:'https://www.usa-iron.com/pages/kettlebell-warm-up',
+  items:[
+    {name:'Around the world', reps:'×5 each direction', kg:[8]},
+    {name:'Halo', reps:'×5 each direction', kg:[8]},
+    {name:'Figure 8', reps:'×10 (5 each way)', kg:[8]},
+    {name:'Pullovers', reps:'×5', kg:[8]},
+    {name:'Goblet squat', reps:'×5', kg:[8]}
+  ]
+};
+
+const B_ITEMS = [
+  {name:'Dead stop swings', reps:'×10', kg:[12]},
+  {name:'Half-kneeling halo', reps:'×10 each side', kg:[8]},
+  {name:'Half-kneeling upright row', reps:'×8 each side', kg:[8]},
+  {name:'Kickstand squat', reps:'×10 each side', kg:[12]}
+];
+
+const WORKOUTS = {
+  A:{title:'Full-Body Complex', rounds:4, meta:'4 rounds, rest as needed between rounds',
+     video:'https://www.facebook.com/watch/?v=1074537532220249', finish:'3-min stretch',
+     items:[
+      {name:'Swings', reps:'×8', kg:[16]},
+      {name:'Clean & squat', reps:'×8 (4 each side)', kg:[8]},
+      {name:'Overhead press', reps:'×4 each arm', kg:[8]},
+      {name:'Rows', reps:'×12 (6 each arm)', kg:[12,16]},
+      {name:'March hold', reps:'×6 each leg, 3-sec hold, bell at chest', kg:[8,12]}
+     ]},
+  B:{title:'Beginner Circuit', rounds:5, meta:'5 rounds, no rest between exercises, rest 1–2 min between rounds',
+     video:'https://www.instagram.com/p/DElGscKRVhC/', finish:'3-min stretch', items:B_ITEMS},
+  C:{title:'Kneeling Upper Body', rounds:7, meta:'7 rounds kneeling on padding, rest 60–90 s between rounds',
+     video:'https://www.facebook.com/share/r/1EQKnVTjWN/', finish:'3-min stretch',
+     items:[
+      {name:'Wood chop', reps:'×5 each side', kg:[8]},
+      {name:'High pull', reps:'×5', kg:[8]},
+      {name:'Curl + press', reps:'×5', kg:[8]},
+      {name:'Head halo', reps:'×5', kg:[8]},
+      {name:'Hip halo', reps:'×5 each direction', kg:[8]}
+     ]},
+  R:{title:'Recovery (light Beginner Circuit)', rounds:3, meta:'3 easy rounds, rest 2 min between rounds',
+     video:'https://www.instagram.com/p/DElGscKRVhC/', finish:'10-min easy walk',
+     items:B_ITEMS.map(i => i.name==='Kickstand squat' ? {...i, kg:[8]} : i)}
+};
+
+// Index by JS getDay(): 0 = Sunday
+const SCHEDULE = ['R','A','B','C','A','B','C'];
+const DAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+const STRIP = [1,2,3,4,5,6,0]; // Monday first
+
+const PHASES = [
+  {key:'warm', name:'Warm-up', ms:5*60000, color:'var(--c-warm)', block:'warmBlock'},
+  {key:'work', name:'Workout', ms:22*60000, color:'var(--c-work)', block:'workBlock'},
+  {key:'cool', name:'Cool-down', ms:3*60000, color:'var(--c-cool)', block:'coolBlock'}
+];
+const TOTAL = PHASES.reduce((a,p)=>a+p.ms,0);
+const REST_MS = 60000;
+
+const $ = id => document.getElementById(id);
+const todayIdx = new Date().getDay();
+let selected = todayIdx;
+let rounds = 0;
+
+/* ---------- rendering ---------- */
+function kgChips(list){
+  if(!list || !list.length) return '<span class="or">bodyweight</span>';
+  return list.map(k => `<span class="kg k${k}" style="--k:${KG[k]||'#5B636C'}">${k} kg</span>`).join('<span class="or">or</span>');
+}
+function renderList(el, items){
+  el.innerHTML = items.map(i =>
+    `<li><span><span class="name">${i.name}</span><span class="reps">${i.reps}</span></span><span class="kgs">${kgChips(i.kg)}</span></li>`
+  ).join('');
+}
+function renderDays(){
+  $('days').innerHTML = STRIP.map(d =>
+    `<button class="day${d===todayIdx?' today':''}" data-d="${d}" aria-pressed="${d===selected}">${DAY_NAMES[d].slice(0,3)}</button>`
+  ).join('');
+}
+function renderDay(){
+  const w = WORKOUTS[SCHEDULE[selected]];
+  $('dayName').textContent = selected===todayIdx ? `Today, ${DAY_NAMES[selected]}` : DAY_NAMES[selected];
+  $('dayWorkout').textContent = w.title;
+  $('workTitle').textContent = w.title;
+  $('workMeta').textContent = w.meta;
+  $('workVideo').href = w.video;
+  $('finishText').textContent = w.finish;
+  renderList($('workList'), w.items);
+  rounds = 0; renderRounds();
+  renderDays();
+}
+function renderRounds(){
+  const w = WORKOUTS[SCHEDULE[selected]];
+  $('roundCount').textContent = `${rounds} / ${w.rounds}`;
+}
+$('warmVideo').href = WARMUP.video;
+renderList($('warmList'), WARMUP.items);
+
+$('days').addEventListener('click', e => {
+  const b = e.target.closest('.day'); if(!b) return;
+  selected = +b.dataset.d; if(auto.on) stopAuto(''); renderDay();
+});
+$('roundPlus').onclick = () => { const max = WORKOUTS[SCHEDULE[selected]].rounds; if(rounds < max) rounds++; renderRounds(); };
+$('roundMinus').onclick = () => { if(rounds > 0) rounds--; renderRounds(); };
+
+/* ---------- sound ---------- */
+let actx;
+function audio(){ try{ actx = actx || new (window.AudioContext||window.webkitAudioContext)(); if(actx.state==='suspended') actx.resume(); }catch(e){} return actx; }
+function beep(times=1, freq=880){
+  const ctx = audio(); if(!ctx) return;
+  for(let n=0;n<times;n++){
+    const t = ctx.currentTime + n*0.28;
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.frequency.value = freq; o.type='sine';
+    g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(0.35,t+0.02); g.gain.exponentialRampToValueAtTime(0.0001,t+0.22);
+    o.connect(g).connect(ctx.destination); o.start(t); o.stop(t+0.24);
+  }
+  try{ navigator.vibrate && navigator.vibrate(times>1?[200,100,200]:150); }catch(e){}
+}
+
+/* ---------- keep screen awake ---------- */
+let lock = null;
+async function wake(on){
+  try{
+    if(on && 'wakeLock' in navigator && !lock){ lock = await navigator.wakeLock.request('screen'); lock.addEventListener('release',()=>{lock=null}); }
+    if(!on && lock){ await lock.release(); lock=null; }
+  }catch(e){}
+}
+document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible' && (session.running||rest.running)) wake(true); });
+
+/* ---------- session timer ---------- */
+const session = {running:false, endAt:0, left:TOTAL, phase:0, done:false};
+$('bar').innerHTML = PHASES.map(p => `<div class="seg" style="flex:${p.ms};--c:${p.color}"><i></i></div>`).join('');
+$('seglabels').innerHTML = PHASES.map(p => `<span style="flex:${p.ms}">${p.name} ${p.ms/60000} min</span>`).join('');
+
+const fmt = ms => { const s = Math.max(0, Math.ceil(ms/1000)); return `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`; };
+
+function phaseAt(elapsed){
+  let acc = 0;
+  for(let i=0;i<PHASES.length;i++){ if(elapsed < acc + PHASES[i].ms) return {i, into:elapsed-acc}; acc += PHASES[i].ms; }
+  return {i:PHASES.length-1, into:PHASES[PHASES.length-1].ms};
+}
+function drawSession(){
+  const left = session.running ? session.endAt - Date.now() : session.left;
+  const elapsed = Math.min(TOTAL, TOTAL - Math.max(0,left));
+  const {i, into} = phaseAt(elapsed);
+  const p = PHASES[i];
+
+  if(session.running && i !== session.phase){
+    beep(2, 988);
+    $('announce').textContent = `${p.name} started`;
+    session.phase = i;
+  }
+  if(session.running && left <= 0){
+    session.running = false; session.left = 0; session.done = true;
+    beep(3, 660); $('announce').textContent = 'Session complete';
+    if(!rest.running) wake(false);
+  }
+
+  document.documentElement.style.setProperty('--phase', p.color);
+  $('phaseName').textContent = session.done ? 'Session complete' : p.name;
+  $('clock').textContent = session.done ? '0:00' : fmt(p.ms - into);
+  $('total').textContent = `${fmt(Math.max(0,left))} left in the session`;
+
+  let acc = 0;
+  [...$('bar').children].forEach((seg,k) => {
+    const frac = Math.min(1, Math.max(0, (elapsed - acc) / PHASES[k].ms));
+    seg.firstChild.style.width = (frac*100)+'%'; acc += PHASES[k].ms;
+  });
+  PHASES.forEach((ph,k) => $(ph.block).classList.toggle('active', (session.running || elapsed>0) && !session.done && k===i));
+
+  $('startBtn').textContent = session.running ? 'Pause' : session.done ? 'Start again' : (elapsed>0 ? 'Resume' : 'Start session');
+}
+$('startBtn').onclick = () => {
+  audio();
+  if(session.running){
+    session.left = session.endAt - Date.now(); session.running = false;
+    if(!rest.running) wake(false);
+  } else {
+    if(session.done){ session.left = TOTAL; session.done = false; session.phase = 0; }
+    session.endAt = Date.now() + session.left; session.running = true;
+    session.phase = phaseAt(TOTAL - session.left).i;
+    wake(true);
+  }
+  drawSession();
+};
+$('resetBtn').onclick = () => {
+  session.running=false; session.left=TOTAL; session.phase=0; session.done=false;
+  if(auto.on) stopAuto('');
+  rounds = 0; renderRounds();
+  if(!rest.running) wake(false);
+  drawSession();
+};
+
+/* ---------- rest timer ---------- */
+const rest = {running:false, endAt:0, lastSec:null};
+function drawRest(){
+  const left = rest.running ? rest.endAt - Date.now() : REST_MS;
+  if(rest.running){
+    const sec = Math.ceil(left/1000);
+    if(sec !== rest.lastSec && sec <= 3 && sec > 0) beep(1, 660);
+    rest.lastSec = sec;
+    if(left <= 0){
+      rest.running = false; beep(3, 988);
+      $('announce').textContent = 'Rest over';
+      if(!session.running) wake(false);
+    }
+  }
+  $('restClock').textContent = fmt(rest.running ? left : REST_MS);
+  $('restFill').style.width = rest.running ? (Math.max(0,left)/REST_MS*100)+'%' : '0%';
+  $('restBtn').textContent = rest.running ? 'Stop rest' : 'Start 60 s rest';
+  document.body.classList.toggle('resting', rest.running);
+  $('restLabel').textContent = (big && !rest.running) ? 'Tap anywhere here to start rest' : 'Rest';
+}
+function startRest(){ audio(); rest.running=true; rest.endAt=Date.now()+REST_MS; rest.lastSec=null; wake(true); drawRest(); }
+function stopRest(){ rest.running=false; if(!session.running && !auto.on) wake(false); drawRest(); }
+$('restBtn').onclick = e => { e.stopPropagation(); rest.running ? stopRest() : startRest(); };
+$('restArea').addEventListener('click', () => { if(big && !rest.running) startRest(); });
+
+/* ---------- voice commands ---------- */
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+const voice = {on:false, rec:null, lastAt:0};
+const HINT = 'Say “rest” to start the rest timer, “stop” to end it, or “round” to count a round.';
+function setVoiceUI(on, msg){
+  $('voiceBtn').setAttribute('aria-pressed', on);
+  $('voiceBtn').textContent = on ? 'Voice commands on (listening)' : 'Turn on voice commands';
+  $('voiceHint').textContent = msg || HINT;
+}
+function handleSpeech(text){
+  const t = text.toLowerCase();
+  const now = Date.now();
+  if(now - voice.lastAt < 1500) return; // ignore repeats of the same phrase
+  if(/\b(stop|cancel)\b/.test(t)){
+    if(rest.running){ stopRest(); beep(1,520); }
+    voice.lastAt = now;
+  } else if(/\b(rest|rests|wrest|breather|break)\b/.test(t)){
+    startRest(); beep(1,880);
+    voice.lastAt = now;
+  } else if(/\b(round|rounds)\b/.test(t)){
+    $('roundPlus').click(); beep(1,740);
+    voice.lastAt = now;
+  }
+}
+async function startVoice(){
+  if(!window.isSecureContext){ setVoiceUI(false, 'Voice needs the app to be opened from a secure web address (https). It won’t work from a downloaded file.'); return; }
+  if(!SR){ setVoiceUI(false, 'Voice commands aren’t supported in this browser. Try Chrome on Android or a computer, or Safari on iPhone.'); return; }
+  try{
+    const stream = await navigator.mediaDevices.getUserMedia({audio:true});
+    stream.getTracks().forEach(t => t.stop());
+  }catch(err){
+    setVoiceUI(false, `The browser didn’t allow the microphone here (${err.name}). If this page is open inside Claude, open the app from your own web address instead.`);
+    return;
+  }
+  const rec = new SR();
+  rec.lang = navigator.language || 'en-AU';
+  rec.continuous = true;
+  rec.interimResults = false;
+  rec.onresult = e => {
+    for(let k=e.resultIndex;k<e.results.length;k++){ if(e.results[k].isFinal) handleSpeech(e.results[k][0].transcript); }
+  };
+  rec.onerror = e => {
+    if(e.error==='no-speech' || e.error==='aborted') return;
+    voice.on=false; setVoiceUI(false, `Voice stopped (${e.error}). Tap the button to try again.`);
+  };
+  rec.onend = () => { if(voice.on){ try{ rec.start(); }catch(err){} } };
+  voice.rec = rec; voice.on = true;
+  try{ rec.start(); setVoiceUI(true); }catch(err){ voice.on=false; setVoiceUI(false, 'Voice commands couldn’t start. Reload the page and try again.'); }
+}
+function stopVoice(){ voice.on=false; try{ voice.rec && voice.rec.stop(); }catch(e){} setVoiceUI(false); }
+$('voiceBtn').onclick = () => { audio(); voice.on ? stopVoice() : startVoice(); };
+
+/* ---------- big rest button ---------- */
+let big = false;
+function setBig(on){
+  big = on; document.body.classList.toggle('big', on);
+  $('bigBtn').setAttribute('aria-pressed', on);
+  $('bigBtn').textContent = on ? 'Big rest button on' : 'Turn on big rest button';
+  try{ localStorage.setItem('kb-big', on ? '1' : '0'); }catch(e){}
+  drawRest();
+}
+$('bigBtn').onclick = () => setBig(!big);
+
+/* ---------- auto rest ---------- */
+const auto = {on:false, phase:'work', endAt:0, workMs:180000};
+try{ const v = +localStorage.getItem('kb-roundlen'); if(v >= 60000 && v <= 600000) auto.workMs = v; }catch(e){}
+function drawLen(){ $('lenVal').textContent = fmt(auto.workMs); }
+function setLen(ms){
+  auto.workMs = Math.min(600000, Math.max(60000, ms));
+  try{ localStorage.setItem('kb-roundlen', auto.workMs); }catch(e){}
+  drawLen();
+}
+$('lenMinus').onclick = () => setLen(auto.workMs - 30000);
+$('lenPlus').onclick = () => setLen(auto.workMs + 30000);
+
+function autoWork(){ auto.phase='work'; auto.endAt = Date.now() + auto.workMs; beep(2, 988); }
+function startAuto(){ audio(); auto.on = true; wake(true); if(rest.running) stopRest(); autoWork(); drawAuto(); }
+function stopAuto(msg){ auto.on = false; if(!session.running && !rest.running) wake(false); drawAuto(msg); }
+$('autoBtn').onclick = () => auto.on ? stopAuto() : startAuto();
+
+function drawAuto(msg){
+  const target = WORKOUTS[SCHEDULE[selected]].rounds;
+  if(auto.on){
+    if(auto.phase === 'work' && Date.now() >= auto.endAt){
+      if(rounds < target){ rounds++; renderRounds(); }
+      if(rounds >= target){ stopAuto(`All ${target} rounds done. Nice work.`); beep(3, 660); return; }
+      auto.phase = 'rest'; startRest();
+    } else if(auto.phase === 'rest' && !rest.running){
+      autoWork();
+    }
+  }
+  $('autoBtn').setAttribute('aria-pressed', auto.on);
+  $('autoBtn').textContent = auto.on ? 'Stop auto rounds' : 'Start auto rounds';
+  let status = msg || '';
+  if(auto.on){
+    status = auto.phase === 'work'
+      ? `Round ${Math.min(rounds + 1, target)} of ${target}: ${fmt(auto.endAt - Date.now())} left`
+      : `Resting before round ${rounds + 1} of ${target}`;
+  }
+  if(auto.on || msg !== undefined) $('autoStatus').textContent = status;
+}
+
+try{ if(localStorage.getItem('kb-big') === '1') setBig(true); }catch(e){}
+drawLen();
+
+renderDay();
+drawSession(); drawRest();
+setInterval(() => { drawSession(); drawRest(); drawAuto(); }, 200);
+</script>
+</body>
+</html>
