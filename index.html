@@ -64,6 +64,10 @@ h1{font-family:var(--display);font-weight:700;font-size:44px;line-height:1;margi
 .voice .btn{width:100%}
 .voice .btn[aria-pressed="true"]{background:var(--c-rest);color:#fff}
 .voicehint{margin:8px 0 0;font-size:14px;color:var(--muted)}
+.cmds{list-style:none;margin:10px 0 0;padding:0;display:grid;gap:6px}
+.cmds li{display:flex;align-items:baseline;gap:10px;font-size:15px}
+.cmds b{font-family:var(--display);font-weight:700;font-size:18px;min-width:76px}
+.cmds span{color:var(--muted)}
 
 /* Auto rest */
 .auto{margin-top:18px;background:var(--surface);border-radius:16px;padding:16px}
@@ -143,7 +147,13 @@ ul.ex li:last-child{border-bottom:0}
     <div class="voice">
       <button class="btn" id="voiceBtn" aria-pressed="false">Turn on voice commands</button>
       <button class="btn" id="bigBtn" aria-pressed="false">Turn on big rest button</button>
-      <p class="voicehint" id="voiceHint">Say “rest” to start the rest timer, “stop” to end it, or “round” to count a round.</p>
+      <p class="voicehint" id="voiceHint">Turn voice on, then say one of these commands.</p>
+      <ul class="cmds" aria-label="Voice commands">
+        <li><b>“Start”</b><span>Start the session timer</span></li>
+        <li><b>“Rest”</b><span>Start the 60 s rest timer</span></li>
+        <li><b>“Stop”</b><span>End the rest timer early</span></li>
+        <li><b>“Round”</b><span>Count a round as done</span></li>
+      </ul>
     </div>
     <p class="sr" id="announce" aria-live="polite" style="position:absolute;left:-9999px"></p>
   </div>
@@ -420,7 +430,7 @@ $('restArea').addEventListener('click', () => { if(big && !rest.running) startRe
 /* ---------- voice commands ---------- */
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 const voice = {on:false, rec:null, lastAt:0};
-const HINT = 'Say “rest” to start the rest timer, “stop” to end it, or “round” to count a round.';
+const HINT = 'Listening. Say one of these commands.';
 function setVoiceUI(on, msg){
   $('voiceBtn').setAttribute('aria-pressed', on);
   $('voiceBtn').textContent = on ? 'Voice commands on (listening)' : 'Turn on voice commands';
@@ -438,6 +448,9 @@ function handleSpeech(text){
     voice.lastAt = now;
   } else if(/\b(round|rounds)\b/.test(t)){
     $('roundPlus').click(); beep(1,740);
+    voice.lastAt = now;
+  } else if(/\b(start|begin)\b/.test(t)){
+    if(!session.running) $('startBtn').click(); // never pauses a running session
     voice.lastAt = now;
   }
 }
