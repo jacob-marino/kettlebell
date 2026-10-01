@@ -91,8 +91,26 @@ body.big:not(.resting) .restbtn{display:none}
 .voice .btn + .btn{margin-top:8px}
 
 /* Lists */
-section.block{margin:0 0 26px;padding-left:14px;border-left:4px solid var(--line);transition:border-color .3s}
-section.block.active{border-left-color:var(--phase)}
+section.block{margin:0 0 26px;padding:10px 14px;border-left:4px solid var(--line);border-radius:0 14px 14px 0;transition:border-color .3s,background .3s,opacity .3s}
+section.block.active{border-left-color:var(--phase);background:var(--surface);box-shadow:0 2px 14px rgba(0,0,0,.08)}
+.bh{display:flex;align-items:center;gap:10px}
+.now{display:none;background:var(--phase);color:var(--on-phase,#fff);font-weight:600;font-size:13px;letter-spacing:.4px;text-transform:uppercase;border-radius:999px;padding:2px 11px}
+section.block.active .now{display:inline-block}
+section.block.active .name{font-weight:700}
+section.block.active .reps{color:var(--ink)}
+/* While a session is in progress, fade the parts that are not current */
+body.inprog section.block:not(.active){opacity:.5}
+/* Resting: the active part turns rest-green and the rest bar glows */
+body.resting section.block.active{--phase:var(--c-rest);--on-phase:#fff}
+body.resting .restinner{box-shadow:0 0 0 3px var(--c-rest),0 6px 24px rgba(0,0,0,.18)}
+/* Warm-up finished or skipped: warm-up goes away, video pane takes its place (wide screens only) */
+body.warmdone #warmBlock{display:none}
+#skipBtn{white-space:nowrap}
+body.warmdone #skipBtn{display:none}
+.vp{display:none}
+.vbtn{display:block;text-align:center;text-decoration:none;background:var(--ink);color:var(--bg);font-weight:600;border-radius:12px;padding:10px;margin:8px 0}
+.vframe{background:#000;border-radius:14px;overflow:hidden;height:calc(100vh - 310px);min-height:340px;max-height:780px;margin:0}
+.vframe iframe{width:100%;height:100%;border:0;display:block}
 h2{font-family:var(--display);font-weight:700;font-size:28px;line-height:1.05;margin:0}
 .meta{color:var(--muted);margin:4px 0 10px;font-size:16px}
 .video{display:inline-block;color:var(--c-work);font-weight:600;text-decoration:none;margin-bottom:8px}
@@ -122,6 +140,12 @@ ul.ex li:last-child{border-bottom:0}
 .restclock{font-family:var(--display);font-weight:700;font-size:40px;line-height:1;font-variant-numeric:tabular-nums}
 .restbtn{margin-left:auto;border:0;border-radius:12px;padding:13px 16px;font-weight:600;background:var(--bg);color:var(--ink)}
 
+@media (max-width:560px){
+  .controls{flex-wrap:wrap}
+  #startBtn{flex:1 1 100%}
+  #skipBtn,#resetBtn{flex:1}
+}
+
 /* Phone/narrow: .side wrappers are invisible, rest bar stays fixed at the bottom */
 .side,.sidebody{display:contents}
 
@@ -134,6 +158,7 @@ ul.ex li:last-child{border-bottom:0}
   .rest{position:static;padding:0;pointer-events:auto}
   .restinner{max-width:none}
   #warmBlock{grid-column:2;grid-row:1}
+  body.warmdone .vp{display:block;grid-column:2;grid-row:1}
   #coolBlock{grid-column:2;grid-row:2}
   #workBlock{grid-column:3;grid-row:1 / span 2}
   section.block{margin-bottom:22px}
@@ -202,6 +227,7 @@ ul.ex li:last-child{border-bottom:0}
     <div class="seglabels" id="seglabels"></div>
     <div class="controls">
       <button class="btn primary" id="startBtn">Start session</button>
+      <button class="btn" id="skipBtn">Skip warm-up</button>
       <button class="btn" id="resetBtn">Reset</button>
     </div>
     <div class="voice">
@@ -210,6 +236,7 @@ ul.ex li:last-child{border-bottom:0}
       <p class="voicehint" id="voiceHint">Turn voice on, then say one of these commands.</p>
       <ul class="cmds" aria-label="Voice commands">
         <li><b>“Start”</b><span>Start the session</span></li>
+        <li><b>“Skip”</b><span>Skip the warm-up</span></li>
         <li><b>“Rest”</b><span>Start 60 s rest</span></li>
         <li><b>“Stop”</b><span>End the rest early</span></li>
         <li><b>“Round”</b><span>Count a round</span></li>
@@ -232,14 +259,20 @@ ul.ex li:last-child{border-bottom:0}
  </div>
 
   <section class="block" id="warmBlock">
-    <h2>Warm-up</h2>
+    <div class="bh"><h2>Warm-up</h2><span class="now"></span></div>
     <p class="meta">5 minutes, 2 rounds with 8 kg</p>
     <a class="video" id="warmVideo" target="_blank" rel="noopener">Watch the warm-up video</a>
     <ul class="ex" id="warmList"></ul>
   </section>
 
+  <section class="vp" id="videoPane" aria-label="Workout video">
+    <div class="bh"><h2 id="vTitle">Workout video</h2></div>
+    <a class="vbtn" id="vLink" target="_blank" rel="noopener">Open video in a new tab</a>
+    <div class="vframe" id="vframe"></div>
+  </section>
+
   <section class="block" id="workBlock">
-    <h2 id="workTitle">Workout</h2>
+    <div class="bh"><h2 id="workTitle">Workout</h2><span class="now"></span></div>
     <p class="meta" id="workMeta"></p>
     <a class="video" id="workVideo" target="_blank" rel="noopener">Watch the workout video</a>
     <ul class="ex" id="workList"></ul>
@@ -264,7 +297,7 @@ ul.ex li:last-child{border-bottom:0}
   </section>
 
   <section class="block" id="coolBlock">
-    <h2>Finish</h2>
+    <div class="bh"><h2>Finish</h2><span class="now"></span></div>
     <p class="finish" id="finishText">3-min stretch</p>
   </section>
 </main>
@@ -322,9 +355,9 @@ const DAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','
 const STRIP = [1,2,3,4,5,6,0]; // Monday first
 
 const PHASES = [
-  {key:'warm', name:'Warm-up', ms:5*60000, color:'var(--c-warm)', block:'warmBlock'},
-  {key:'work', name:'Workout', ms:22*60000, color:'var(--c-work)', block:'workBlock'},
-  {key:'cool', name:'Cool-down', ms:3*60000, color:'var(--c-cool)', block:'coolBlock'}
+  {key:'warm', name:'Warm-up', ms:5*60000, color:'var(--c-warm)', on:'var(--on-warm)', block:'warmBlock'},
+  {key:'work', name:'Workout', ms:22*60000, color:'var(--c-work)', on:'#fff', block:'workBlock'},
+  {key:'cool', name:'Cool-down', ms:3*60000, color:'var(--c-cool)', on:'#fff', block:'coolBlock'}
 ];
 const TOTAL = PHASES.reduce((a,p)=>a+p.ms,0);
 const REST_MS = 60000;
@@ -356,6 +389,8 @@ function renderDay(){
   $('workTitle').textContent = w.title;
   $('workMeta').textContent = w.meta;
   $('workVideo').href = w.video;
+  $('vLink').href = w.video;
+  $('vTitle').textContent = w.title + ' video';
   $('finishText').textContent = w.finish;
   renderList($('workList'), w.items);
   rounds = 0; renderRounds();
@@ -439,7 +474,16 @@ function drawSession(){
     const frac = Math.min(1, Math.max(0, (elapsed - acc) / PHASES[k].ms));
     seg.firstChild.style.width = (frac*100)+'%'; acc += PHASES[k].ms;
   });
-  PHASES.forEach((ph,k) => $(ph.block).classList.toggle('active', (session.running || elapsed>0) && !session.done && k===i));
+  const inprog = (session.running || elapsed>0) && !session.done;
+  document.documentElement.style.setProperty('--on-phase', p.on);
+  document.body.classList.toggle('inprog', inprog);
+  document.body.classList.toggle('warmdone', elapsed >= PHASES[0].ms); // finished, or skipped
+  PHASES.forEach((ph,k) => {
+    const el = $(ph.block), on = inprog && k===i;
+    el.classList.toggle('active', on);
+    el.querySelector('.now').textContent = on ? (rest.running ? 'Rest' : 'Now') : '';
+  });
+  updateVideo();
 
   $('startBtn').textContent = session.running ? 'Pause' : session.done ? 'Start again' : (elapsed>0 ? 'Resume' : 'Start session');
 }
@@ -456,6 +500,17 @@ $('startBtn').onclick = () => {
   }
   drawSession();
 };
+function skipWarm(){
+  const warmMs = PHASES[0].ms;
+  const left = session.running ? session.endAt - Date.now() : session.left;
+  if(session.done || TOTAL - Math.max(0,left) >= warmMs) return false; // already past the warm-up
+  const newLeft = TOTAL - warmMs;
+  if(session.running) session.endAt = Date.now() + newLeft; // drawSession beeps for the phase change
+  else { session.left = newLeft; session.phase = 1; }
+  drawSession();
+  return true;
+}
+$('skipBtn').onclick = () => { audio(); skipWarm(); };
 $('resetBtn').onclick = () => {
   session.running=false; session.left=TOTAL; session.phase=0; session.done=false;
   if(auto.on) stopAuto('');
@@ -489,6 +544,29 @@ function stopRest(){ rest.running=false; if(!session.running && !auto.on) wake(f
 $('restBtn').onclick = e => { e.stopPropagation(); rest.running ? stopRest() : startRest(); };
 $('restArea').addEventListener('click', () => { if(big && !rest.running) startRest(); });
 
+/* ---------- workout video (shown in the freed-up warm-up column on wide screens) ---------- */
+const wideMQ = window.matchMedia('(min-width:1000px) and (min-height:620px)');
+let videoSrc = null;
+function embedUrl(u){
+  const ig = u.match(/instagram\.com\/(p|reel)\/([\w-]+)/);
+  if(ig) return `https://www.instagram.com/${ig[1]}/${ig[2]}/embed/`;
+  if(/facebook\.com/.test(u)) return `https://www.facebook.com/plugins/video.php?href=${encodeURIComponent(u)}&show_text=false&autoplay=true&allowfullscreen=true`;
+  return null;
+}
+function updateVideo(){
+  const w = WORKOUTS[SCHEDULE[selected]];
+  const want = (document.body.classList.contains('warmdone') && wideMQ.matches) ? embedUrl(w.video) : null;
+  if(want === videoSrc) return;
+  videoSrc = want;
+  const box = $('vframe'); box.innerHTML = '';
+  if(want){
+    const f = document.createElement('iframe');
+    f.src = want; f.title = w.title + ' video'; f.allowFullscreen = true;
+    f.allow = 'autoplay; encrypted-media; picture-in-picture; fullscreen; clipboard-write';
+    box.appendChild(f);
+  }
+}
+
 /* ---------- voice commands ---------- */
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 const voice = {on:false, rec:null, lastAt:0};
@@ -504,6 +582,9 @@ function handleSpeech(text){
   if(now - voice.lastAt < 1500) return; // ignore repeats of the same phrase
   if(/\b(stop|cancel)\b/.test(t)){
     if(rest.running){ stopRest(); beep(1,520); }
+    voice.lastAt = now;
+  } else if(/\b(skip|skipped)\b/.test(t)){
+    if(skipWarm()) beep(1,740);
     voice.lastAt = now;
   } else if(/\b(rest|rests|wrest|breather|break)\b/.test(t)){
     startRest(); beep(1,880);
