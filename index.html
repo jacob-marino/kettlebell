@@ -111,6 +111,8 @@ body.warmdone #warmBlock{display:none}
 .btn:disabled{opacity:.55;cursor:default}
 body.paused .clock,body.paused .restclock{opacity:.5}
 body.warmdone #skipBtn{display:none}
+.flash{position:fixed;left:50%;top:14%;transform:translateX(-50%);z-index:30;max-width:92vw;text-align:center;pointer-events:none;opacity:0;transition:opacity .2s;background:var(--ink);color:var(--bg);font-family:var(--display);font-weight:700;font-size:clamp(40px,8vw,88px);line-height:1.05;text-transform:uppercase;padding:.18em .55em;border-radius:22px;box-shadow:0 10px 40px rgba(0,0,0,.35)}
+.flash.show{opacity:.96}
 .vp{display:none}
 .vbtn{display:block;text-align:center;text-decoration:none;background:var(--ink);color:var(--bg);font-weight:600;border-radius:12px;padding:10px;margin:8px 0}
 .vframe{background:#000;border-radius:14px;overflow:hidden;height:calc(100vh - 310px);min-height:340px;max-height:780px;margin:0}
@@ -216,6 +218,7 @@ ul.ex li:last-child{border-bottom:0}
 </style>
 </head>
 <body>
+<div class="flash" id="flash" aria-hidden="true"></div>
 <main>
  <div class="side">
   <div class="sidebody">
@@ -250,6 +253,7 @@ ul.ex li:last-child{border-bottom:0}
         <li><b>“Rest”</b><span>Start 60 s rest</span></li>
         <li><b>“Stop”</b><span>End the rest</span></li>
         <li><b>“Round”</b><span>Count a round</span></li>
+        <li><b>“Reset”</b><span>Start over (say twice)</span></li>
       </ul>
     </div>
     <p class="sr" id="announce" aria-live="polite" style="position:absolute;left:-9999px"></p>
@@ -613,7 +617,7 @@ function updateVideo(){
 
 /* ---------- voice commands ---------- */
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-const voice = {on:false, rec:null, lastAt:0, startedAt:0, gotSound:false, everSound:false, fails:0, timer:0, fired:new Set()};
+const voice = {on:false, rec:null, lastAt:0, startedAt:0, gotSound:false, everSound:false, fails:0, timer:0, fired:new Map(), lastCmd:'', resetArmedAt:0};
 const HINT = 'Listening. Say one of these commands.';
 function setVoiceUI(on, msg){
   $('voiceBtn').setAttribute('aria-pressed', on);
@@ -623,6 +627,7 @@ function setVoiceUI(on, msg){
 // Returns the name of the command that ran, '' if the phrase wasn't a command, or null if it was a repeat to ignore.
 // Command words, including common mishearings of short words. Checked in this order.
 const COMMANDS = [
+  ['reset',         /\b(reset|re-set|restart)\b/],
   ['stop rest',     /\b(stop|stopped|cancel)\b/],
   ['pause',         /\b(pause|paused|paws)\b/],
   ['resume',        /\b(resume|resumed|continue|unpause)\b/],
@@ -638,8 +643,15 @@ function matchCommand(texts){
   }
   return '';
 }
+// Runs a command; may return a different label to show (used when a command needs confirming).
 function runCommand(name){
   switch(name){
+    case 'reset': {
+      // "reset" sounds like "rest", so if there is progress to lose, ask for a second "reset" within 6 s
+      const progress = session.running || session.done || paused.on || session.left < TOTAL || rest.running || auto.on || rounds > 0;
+      if(progress && Date.now() - voice.resetArmedAt > 6000){ voice.resetArmedAt = Date.now(); beep(2,520); return 'say “reset” again to confirm'; }
+      voice.resetArmedAt = 0; $('resetBtn').click(); beep(1,740); break;
+    }
     case 'stop rest': if(rest.running){ stopRest(); beep(1,520); } break;
     case 'pause': pauseAll(); break;
     case 'resume': resumeAll(); break;
@@ -655,8 +667,17 @@ function handleSpeech(text){
   const now = Date.now();
   if(now - voice.lastAt < 1500) return null; // ignore repeats of the same phrase
   const hit = matchCommand(Array.isArray(text) ? text : [text]);
-  if(hit){ voice.lastAt = now; runCommand(hit); }
-  return hit;
+  if(!hit) return '';
+  voice.lastAt = now; voice.lastCmd = hit;
+  const label = runCommand(hit) || hit;
+  flash(label);
+  return label;
+}
+// Big on-screen confirmation of a voice command, readable from across the room
+let flashTimer = 0;
+function flash(text){
+  const f = $('flash'); f.textContent = text; f.classList.add('show');
+  clearTimeout(flashTimer); flashTimer = setTimeout(() => f.classList.remove('show'), 1500);
 }
 const VOICE_ERRORS = {
   'not-allowed':'The microphone is blocked for this page. Click the padlock in the address bar, set Microphone to Allow, then tap the button again.',
@@ -679,7 +700,7 @@ async function startVoice(){
   rec.continuous = true;
   rec.interimResults = true; // act on a command as soon as it's recognised, not 1-2 s later when Chrome finalises it
   rec.maxAlternatives = 3;
-  rec.onstart = () => { voice.startedAt = Date.now(); voice.gotSound = false; voice.fired = new Set(); };
+  rec.onstart = () => { voice.startedAt = Date.now(); voice.gotSound = false; voice.fired = new Map(); };
   rec.onsoundstart = () => {
     voice.gotSound = true; voice.fails = 0;
     if(!voice.everSound){ voice.everSound = true; $('voiceHint').textContent = 'The microphone is picking up sound. Say a command.'; }
@@ -690,11 +711,15 @@ async function startVoice(){
       const r = e.results[k];
       const alts = Array.from(r, a => a.transcript.trim());
       const said = alts[0];
-      if(voice.fired.has(k)) continue; // already acted on this utterance (interim result came first)
+      if(voice.fired.has(k)){ // already acted on this utterance (its interim result came first)
+        // "reset" is often heard as "rest" at first: when the final result turns out to be "reset", undo the rest
+        if(r.isFinal && voice.fired.get(k) === 'rest' && matchCommand(alts) === 'reset'){ stopRest(); voice.fired.delete(k); voice.lastAt = 0; }
+        else continue;
+      }
       if(!r.isFinal && said.split(/\s+/).length > 3) continue; // don't act on half-heard sentences
       const hit = handleSpeech(alts);
       if(hit === null) continue;
-      if(hit){ voice.fired.add(k); $('voiceHint').textContent = `Heard “${said}” → ${hit}`; }
+      if(hit){ voice.fired.set(k, voice.lastCmd); $('voiceHint').textContent = `Heard “${said}” → ${hit}`; }
       else $('voiceHint').textContent = r.isFinal ? `Heard “${said}” (not a command)` : `Hearing “${said}”…`;
     }
   };
