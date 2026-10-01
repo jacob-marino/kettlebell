@@ -613,7 +613,7 @@ function updateVideo(){
 
 /* ---------- voice commands ---------- */
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-const voice = {on:false, rec:null, lastAt:0, startedAt:0, gotAudio:false, fails:0, timer:0};
+const voice = {on:false, rec:null, lastAt:0, startedAt:0, gotSound:false, everSound:false, fails:0, timer:0};
 const HINT = 'Listening. Say one of these commands.';
 function setVoiceUI(on, msg){
   $('voiceBtn').setAttribute('aria-pressed', on);
@@ -671,10 +671,13 @@ async function startVoice(){
   rec.lang = navigator.language || 'en-AU';
   rec.continuous = true;
   rec.interimResults = false;
-  rec.onstart = () => { voice.startedAt = Date.now(); voice.gotAudio = false; };
-  rec.onaudiostart = () => { voice.gotAudio = true; voice.fails = 0; };
+  rec.onstart = () => { voice.startedAt = Date.now(); voice.gotSound = false; };
+  rec.onsoundstart = () => {
+    voice.gotSound = true; voice.fails = 0;
+    if(!voice.everSound){ voice.everSound = true; $('voiceHint').textContent = 'The microphone is picking up sound. Say a command.'; }
+  };
   rec.onresult = e => {
-    voice.gotAudio = true; voice.fails = 0;
+    voice.gotSound = true; voice.fails = 0;
     for(let k=e.resultIndex;k<e.results.length;k++){
       if(!e.results[k].isFinal) continue;
       const said = e.results[k][0].transcript.trim();
@@ -689,21 +692,21 @@ async function startVoice(){
   };
   rec.onend = () => {
     if(!voice.on) return;
-    // Chrome ends a session now and then (silence, background tab): restart it. If it keeps ending
-    // straight away without ever hearing audio, back off and then give up with a message.
+    // Chrome ends a session now and then (silence, background tab): restart it. If sessions keep ending
+    // quickly without the recogniser ever hearing any sound, back off and then give up with a message.
     if(document.hidden) voice.fails = 0; // can't listen in a hidden tab; just wait
-    else if(!voice.gotAudio && Date.now() - voice.startedAt < 2000) voice.fails++;
+    else if(!voice.gotSound && Date.now() - voice.startedAt < 5000) voice.fails++;
     else voice.fails = 0;
     if(voice.fails >= 6){
       voice.on = false;
-      setVoiceUI(false, 'Voice keeps stopping right after it starts. Keep this tab in front, check Chrome has microphone access for this site and that the right microphone is the Windows default, then tap the button again.');
+      setVoiceUI(false, 'Chrome isn’t hearing any sound from the microphone it uses for speech. In Windows Sound settings (Input), the microphone you speak into should be the default, including the default communications device. A headset or Bluetooth dongle that isn’t connected can be picked instead. Fix that, then tap the button again.');
       return;
     }
     const delay = document.hidden ? 2000 : voice.fails ? Math.min(4000, 400 * 2 ** voice.fails) : 0;
     clearTimeout(voice.timer);
     voice.timer = setTimeout(() => { if(voice.on){ try{ rec.start(); }catch(err){} } }, delay);
   };
-  voice.rec = rec; voice.on = true; voice.fails = 0;
+  voice.rec = rec; voice.on = true; voice.fails = 0; voice.everSound = false;
   try{ rec.start(); setVoiceUI(true); }catch(err){ voice.on=false; setVoiceUI(false, 'Voice commands couldn’t start. Reload the page and try again.'); }
 }
 function stopVoice(){ voice.on=false; clearTimeout(voice.timer); try{ voice.rec && voice.rec.stop(); }catch(e){} setVoiceUI(false); }
