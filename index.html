@@ -64,6 +64,24 @@ h1{font-family:var(--display);font-weight:700;font-size:44px;line-height:1;margi
 .voice .btn{width:100%}
 .voice .btn[aria-pressed="true"]{background:var(--c-rest);color:#fff}
 .voicehint{margin:8px 0 0;font-size:14px;color:var(--muted)}
+.vhintrow{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:8px}
+.vhintrow .voicehint{margin:0;flex:1}
+.linkbtn{border:0;background:none;color:var(--c-work);font-weight:600;font-size:14px;line-height:1.2;text-decoration:underline;padding:0 2px;white-space:nowrap}
+.trainer{position:fixed;inset:0;z-index:40;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:16px}
+.trainer[hidden]{display:none}
+.tcard{background:var(--surface);color:var(--ink);border-radius:22px;padding:22px 22px 18px;width:min(540px,100%);max-height:94vh;overflow:auto;text-align:center}
+.tcard h3{font-family:var(--display);font-size:26px;margin:0 0 6px}
+.tcard p{margin:6px 0;color:var(--muted)}
+.tword{font-family:var(--display);font-weight:700;font-size:clamp(52px,12vw,96px);line-height:1;margin:6px 0}
+.tdots{display:flex;justify-content:center;gap:8px;margin:8px 0}
+.tdots i{width:14px;height:14px;border-radius:50%;background:var(--line)}
+.tdots i.on{background:var(--c-rest)}
+.theard{min-height:1.4em;color:var(--ink)!important;font-weight:600}
+.tbtns{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:10px}
+.tbtns .btn{padding:11px 16px}
+.tsum{text-align:left;margin:8px 0;padding:0;list-style:none;font-size:15px}
+.tsum li{padding:3px 0;color:var(--ink)}
+.tsum .warn{color:#B3261E}
 .cmds{list-style:none;margin:10px 0 0;padding:0;display:grid;gap:6px}
 .cmds li{display:flex;align-items:baseline;gap:10px;font-size:15px}
 .cmds b{font-family:var(--display);font-weight:700;font-size:18px;min-width:76px}
@@ -194,7 +212,7 @@ ul.ex li:last-child{border-bottom:0}
   .voice{margin-top:10px;padding-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:8px}
   .voice .btn{font-size:14px;padding:11px 8px}
   .voice .btn + .btn{margin-top:0}
-  .voicehint,.cmds{grid-column:1 / -1}
+  .vhintrow,.cmds{grid-column:1 / -1}
   .voicehint{margin-top:0}
   .cmds{grid-template-columns:1fr 1fr;gap:4px 10px;margin-top:2px}
   .cmds li{font-size:14px;gap:6px}
@@ -223,6 +241,16 @@ ul.ex li:last-child{border-bottom:0}
 </head>
 <body>
 <div class="flash" id="flash" aria-hidden="true"></div>
+<div class="trainer" id="trainer" hidden role="dialog" aria-modal="true" aria-labelledby="tTitle">
+  <div class="tcard">
+    <h3 id="tTitle">Train my voice</h3>
+    <div class="tword" id="tWord"></div>
+    <p id="tBody"></p>
+    <div class="tdots" id="tDots"></div>
+    <p class="theard" id="tHeard" aria-live="polite"></p>
+    <div class="tbtns" id="tBtns"></div>
+  </div>
+</div>
 <main>
  <div class="side">
   <div class="sidebody">
@@ -248,7 +276,7 @@ ul.ex li:last-child{border-bottom:0}
     <div class="voice">
       <button class="btn" id="voiceBtn" aria-pressed="false">Turn on voice commands</button>
       <button class="btn" id="bigBtn" aria-pressed="false">Turn on big rest button</button>
-      <p class="voicehint" id="voiceHint">Turn voice on, then say one of these commands.</p>
+      <div class="vhintrow"><p class="voicehint" id="voiceHint">Turn voice on, then say a command.</p><button class="linkbtn" id="trainBtn">Train my voice</button></div>
       <ul class="cmds" aria-label="Voice commands">
         <li><b>“Start”</b><span>Start session</span></li>
         <li><b>“Pause”</b><span>Pause all</span></li>
@@ -734,7 +762,7 @@ function updateVideo(){
 /* ---------- voice commands ---------- */
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 const voice = {on:false, rec:null, lastAt:0, startedAt:0, gotSound:false, everSound:false, fails:0, timer:0, fired:new Map(), lastCmd:'', resetArmedAt:0};
-const HINT = 'Listening. Say one of these commands.';
+const HINT = 'Listening. Say a command.';
 function setVoiceUI(on, msg){
   $('voiceBtn').setAttribute('aria-pressed', on);
   $('voiceBtn').textContent = on ? 'Voice commands on (listening)' : 'Turn on voice commands';
@@ -743,7 +771,7 @@ function setVoiceUI(on, msg){
 // Returns the name of the command that ran, '' if the phrase wasn't a command, or null if it was a repeat to ignore.
 // Command words, including common mishearings of short words. Checked in this order.
 const COMMANDS = [
-  ['reset',         /\b(reset|re-set|restart)\b/],
+  ['reset',         /\b(reset|re set|restart)\b/],
   ['stop rest',     /\b(stop|stopped|cancel)\b/],
   ['pause',         /\b(pause|paused|paws)\b/],
   ['resume',        /\b(resume|resumed|continue|unpause)\b/],
@@ -752,9 +780,14 @@ const COMMANDS = [
   ['round',         /\b(round|rounds|ground)\b/],
   ['start session', /\b(start|starts|begin)\b/]
 ];
+// Personal words learned by "Train my voice": exactly what Chrome heard when you said each command {phrase: command}
+let aliases = {};
+try{ aliases = JSON.parse(localStorage.getItem('kb-voice-aliases') || '{}') || {}; }catch(e){}
+const norm = t => t.toLowerCase().replace(/[^a-z0-9' ]+/g, ' ').replace(/\s+/g, ' ').trim();
 function matchCommand(texts){
   for(const text of texts){ // Chrome's best guess first, then its alternatives
-    const t = text.toLowerCase();
+    const t = norm(text);
+    if(aliases[t]) return aliases[t]; // a phrase you trained wins over the built-in word list
     for(const [name, re] of COMMANDS) if(re.test(t)) return name;
   }
   return '';
@@ -799,8 +832,24 @@ const VOICE_ERRORS = {
   'not-allowed':'The microphone is blocked for this page. Click the padlock in the address bar, set Microphone to Allow, then tap the button again.',
   'service-not-allowed':'The microphone is blocked for this page. Click the padlock in the address bar, set Microphone to Allow, then tap the button again.',
   'audio-capture':'No microphone was found, or another app is using it. Check your sound settings, then tap the button again.',
-  'network':'Chrome’s speech service couldn’t be reached. Check your internet connection, then tap the button again.'
+  'network':'Chrome’s speech service couldn’t be reached. Check your internet connection, then tap the button again.',
+  'language-not-supported':'On-device speech isn’t available for this language. It has been switched off; tap the button to use Chrome’s online recognition.'
 };
+// Chrome's newer on-device recognition (Chrome 139+): runs on your computer and can be told which words to expect
+const LANG = () => navigator.language || 'en-AU';
+const canOnDevice = !!(SR && 'processLocally' in SR.prototype && SR.available && SR.install);
+let onDevicePref = false;
+try{ onDevicePref = localStorage.getItem('kb-ondevice') === '1'; }catch(e){}
+function setOnDevicePref(on){ onDevicePref = on; try{ localStorage.setItem('kb-ondevice', on ? '1' : '0'); }catch(e){} }
+async function onDeviceStatus(){
+  if(!canOnDevice) return 'unsupported';
+  try{ return await SR.available({langs:[LANG()], processLocally:true}); }catch(e){ return 'unsupported'; }
+}
+function boostWords(){
+  const w = new Set(['start','stop','pause','resume','skip','rest','round','reset','begin','continue']);
+  Object.keys(aliases).forEach(p => w.add(p));
+  return [...w];
+}
 async function startVoice(){
   if(!window.isSecureContext){ setVoiceUI(false, 'Voice needs the app to be opened from a secure web address (https). It won’t work from a downloaded file.'); return; }
   if(!SR){ setVoiceUI(false, 'Voice commands aren’t supported in this browser. Try Chrome on Android or a computer, or Safari on iPhone.'); return; }
@@ -816,7 +865,14 @@ async function startVoice(){
   rec.continuous = true;
   rec.interimResults = true; // act on a command as soon as it's recognised, not 1-2 s later when Chrome finalises it
   rec.maxAlternatives = 3;
-  rec.onstart = () => { voice.startedAt = Date.now(); voice.gotSound = false; voice.fired = new Map(); };
+  voice.mode = 'online';
+  if(onDevicePref && await onDeviceStatus() === 'available'){
+    try{
+      rec.processLocally = true; voice.mode = 'on-device';
+      if(window.SpeechRecognitionPhrase && 'phrases' in rec) rec.phrases = boostWords().map(w => new SpeechRecognitionPhrase(w, 5)); // favour the command words
+    }catch(err){ voice.mode = 'online'; }
+  }
+  rec.onstart = () => { voice.startedAt = Date.now(); voice.gotSound = false; voice.fired = new Map(); trainer.seen = new Set(); };
   rec.onsoundstart = () => {
     voice.gotSound = true; voice.fails = 0;
     if(!voice.everSound){ voice.everSound = true; $('voiceHint').textContent = 'The microphone is picking up sound. Say a command.'; }
@@ -827,6 +883,10 @@ async function startVoice(){
       const r = e.results[k];
       const alts = Array.from(r, a => a.transcript.trim());
       const said = alts[0];
+      if(trainer.open){ // training: record what Chrome heard instead of running commands
+        if(trainer.active) trainerHear(said, r.isFinal, k);
+        continue;
+      }
       if(voice.fired.has(k)){ // already acted on this utterance (its interim result came first)
         // "reset" is often heard as "rest" at first: when the final result turns out to be "reset", undo the rest
         if(r.isFinal && voice.fired.get(k) === 'rest' && matchCommand(alts) === 'reset'){ stopRest(); voice.fired.delete(k); voice.lastAt = 0; }
@@ -841,6 +901,7 @@ async function startVoice(){
   };
   rec.onerror = e => {
     if(e.error==='no-speech' || e.error==='aborted') return;
+    if(e.error==='language-not-supported' && voice.mode==='on-device') setOnDevicePref(false);
     voice.on=false; clearTimeout(voice.timer);
     setVoiceUI(false, VOICE_ERRORS[e.error] || `Voice stopped (${e.error}). Tap the button to try again.`);
   };
@@ -861,10 +922,134 @@ async function startVoice(){
     voice.timer = setTimeout(() => { if(voice.on){ try{ rec.start(); }catch(err){} } }, delay);
   };
   voice.rec = rec; voice.on = true; voice.fails = 0; voice.everSound = false;
-  try{ rec.start(); setVoiceUI(true); }catch(err){ voice.on=false; setVoiceUI(false, 'Voice commands couldn’t start. Reload the page and try again.'); }
+  try{ rec.start(); setVoiceUI(true, voice.mode === 'on-device' ? 'Listening (on this device). Say a command.' : ''); }catch(err){ voice.on=false; setVoiceUI(false, 'Voice commands couldn’t start. Reload the page and try again.'); }
 }
 function stopVoice(){ voice.on=false; clearTimeout(voice.timer); try{ voice.rec && voice.rec.stop(); }catch(e){} setVoiceUI(false); }
 $('voiceBtn').onclick = () => { audio(); voice.on ? stopVoice() : startVoice(); };
+
+/* ---------- train my voice ---------- */
+// Chrome's recogniser can't be retrained, so this learns how Chrome transcribes YOUR voice: you say each command a few
+// times, the app records the transcripts, and those exact phrases then count as that command (and clashes are flagged).
+const TRAIN_N = 3;
+const TRAIN = [
+  {name:'start session', word:'START'}, {name:'stop rest', word:'STOP'}, {name:'pause', word:'PAUSE'}, {name:'resume', word:'RESUME'},
+  {name:'skip warm-up', word:'SKIP'}, {name:'rest', word:'REST'}, {name:'round', word:'ROUND'}, {name:'reset', word:'RESET'}
+];
+const wordOf = cmd => (TRAIN.find(s => s.name === cmd) || {word:cmd}).word;
+const trainer = {open:false, active:false, i:0, got:0, data:{}, seen:new Set(), pending:{}};
+const tbtn = (act, text, cls) => `<button class="btn ${cls || ''}" data-act="${act}">${text}</button>`;
+function trainView(o){
+  $('tTitle').textContent = o.title || 'Train my voice';
+  $('tWord').textContent = o.word || '';
+  $('tBody').innerHTML = o.body || '';
+  $('tHeard').textContent = o.heard || '';
+  $('tDots').innerHTML = Array.from({length:o.dots || 0}, (_, k) => `<i class="${k < (o.on || 0) ? 'on' : ''}"></i>`).join('');
+  $('tBtns').innerHTML = o.buttons || '';
+}
+async function trainIntro(msg){
+  trainer.active = false;
+  const status = await onDeviceStatus();
+  const trained = Object.keys(aliases).length > 0;
+  let device = '', deviceBtn = '';
+  if(canOnDevice && status !== 'unsupported'){
+    device = '<br><br><b>On-device speech</b> (newer Chrome) runs on your computer, favours the command words and works offline.';
+    if(onDevicePref && status === 'available') deviceBtn = tbtn('ondevice-off', 'On-device speech: on (turn off)');
+    else if(status === 'available') deviceBtn = tbtn('ondevice-on', 'Use on-device speech');
+    else if(status === 'downloadable' || status === 'downloading') deviceBtn = tbtn('ondevice-dl', 'Download on-device speech');
+  }
+  trainView({
+    body: `Chrome can’t be retrained, but this teaches the app how Chrome hears <b>your</b> voice. You’ll say each of the ${TRAIN.length} commands ${TRAIN_N} times, pausing a second between each. Use the word shown, or your own short word, for example if START and STOP get mixed up, pick a different word for one of them.${device}`,
+    heard: msg || (trained ? 'You have trained words saved.' : ''),
+    buttons: tbtn('begin', trained ? 'Train again' : 'Start training', 'primary') + deviceBtn + (trained ? tbtn('clear', 'Clear my training') : '') + tbtn('close', 'Close')
+  });
+}
+function trainStep(){
+  const s = TRAIN[trainer.i];
+  trainView({
+    title: `Command ${trainer.i + 1} of ${TRAIN.length}`, word: s.word,
+    body: `Say “${s.word.toLowerCase()}” (or your own word for it) ${TRAIN_N} times, pausing between each.`,
+    dots: TRAIN_N, on: trainer.got, buttons: tbtn('skip', 'Skip this one') + tbtn('back', 'Cancel')
+  });
+}
+async function trainBegin(){
+  trainer.data = {}; trainer.i = 0; trainer.got = 0;
+  if(!voice.on) await startVoice();
+  if(!voice.on){ trainView({body: `Voice couldn’t start. ${$('voiceHint').textContent}`, buttons: tbtn('close', 'Close')}); return; }
+  trainer.active = true; trainStep();
+}
+function trainNext(){
+  trainer.i++; trainer.got = 0;
+  if(trainer.i >= TRAIN.length) trainSummary(); else trainStep();
+}
+function trainerHear(said, isFinal, k){
+  if(trainer.i >= TRAIN.length) return;
+  if(!isFinal){ $('tHeard').textContent = `Hearing “${said}”…`; return; }
+  if(trainer.seen.has(k)) return;
+  trainer.seen.add(k);
+  const phrase = norm(said);
+  if(!phrase) return;
+  if(phrase.split(' ').length > 3){ $('tHeard').textContent = 'That was too long. Say just the one word.'; return; }
+  const cmd = TRAIN[trainer.i].name, d = (trainer.data[cmd] = trainer.data[cmd] || {});
+  d[phrase] = (d[phrase] || 0) + 1; trainer.got++; beep(1, 880);
+  if(trainer.got >= TRAIN_N){ trainNext(); $('tHeard').textContent = `Heard “${phrase}”`; return; }
+  trainStep(); $('tHeard').textContent = `Heard “${phrase}”`;
+}
+// Which command does each heard phrase belong to? The one you said it for most; a tie is left out (ambiguous).
+function buildAliases(data){
+  const by = {};
+  for(const cmd in data) for(const ph in data[cmd]) (by[ph] = by[ph] || []).push([cmd, data[cmd][ph]]);
+  const map = {}, conflicts = [];
+  for(const ph in by){
+    const e = by[ph].sort((a, b) => b[1] - a[1]);
+    if(e.length === 1 || e[0][1] > e[1][1]) map[ph] = e[0][0];
+    if(e.length > 1) conflicts.push({ph, e});
+  }
+  return {map, conflicts};
+}
+function trainSummary(){
+  const {map, conflicts} = buildAliases(trainer.data);
+  trainer.pending = map; trainer.active = false;
+  const rows = TRAIN.map(s => {
+    const d = trainer.data[s.name], got = d ? Object.entries(d).sort((a, b) => b[1] - a[1]).map(([p, n]) => `“${p}” ×${n}`).join(', ') : '(skipped)';
+    return `<li><b>${s.word}</b> → ${got}</li>`;
+  });
+  const warns = conflicts.map(c => `<li class="warn">“${c.ph}” was heard for ${c.e.map(([cmd, n]) => `${wordOf(cmd)} (${n}×)`).join(' and ')}. ${c.e[0][1] === c.e[1][1] ? 'It can’t be told apart, so it’s ignored. ' : ''}Pick a different word for one of them and train again.</li>`);
+  trainView({title: 'What Chrome heard', body: `<ul class="tsum">${rows.join('')}${warns.join('')}</ul>`, buttons: tbtn('save', 'Save', 'primary') + tbtn('begin', 'Train again') + tbtn('close', 'Cancel')});
+}
+function closeTrainer(){ trainer.open = false; trainer.active = false; $('trainer').hidden = true; }
+async function restartVoiceIfOn(){ if(voice.on){ stopVoice(); await startVoice(); } }
+async function trainAct(act){
+  if(act === 'close') closeTrainer();
+  else if(act === 'begin') await trainBegin();
+  else if(act === 'skip') trainNext();
+  else if(act === 'back') trainIntro();
+  else if(act === 'save'){
+    aliases = trainer.pending;
+    try{ localStorage.setItem('kb-voice-aliases', JSON.stringify(aliases)); }catch(e){}
+    closeTrainer(); flash('Voice saved'); $('voiceHint').textContent = 'Your trained words are saved.';
+    await restartVoiceIfOn();
+  }
+  else if(act === 'clear'){
+    aliases = {}; try{ localStorage.removeItem('kb-voice-aliases'); }catch(e){}
+    trainIntro('Training cleared.');
+  }
+  else if(act === 'ondevice-on' || act === 'ondevice-off'){
+    setOnDevicePref(act === 'ondevice-on'); await restartVoiceIfOn();
+    trainIntro(onDevicePref ? 'On-device speech is on.' : 'On-device speech is off.');
+  }
+  else if(act === 'ondevice-dl'){
+    trainView({body: 'Downloading Chrome’s on-device speech pack. This can take a minute…', buttons: ''});
+    try{
+      const ok = await SR.install({langs:[LANG()], processLocally:true});
+      if(ok === false) throw new Error('not installed');
+      setOnDevicePref(true); await restartVoiceIfOn();
+      trainIntro('On-device speech is ready and switched on.');
+    }catch(err){ trainIntro(`Couldn’t download the speech pack (${err.name || err.message}). Chrome’s online recognition is still in use.`); }
+  }
+}
+$('tBtns').onclick = e => { const b = e.target.closest('[data-act]'); if(b) trainAct(b.dataset.act); };
+$('trainBtn').onclick = () => { audio(); trainer.open = true; $('trainer').hidden = false; trainIntro(); };
+document.addEventListener('keydown', e => { if(e.key === 'Escape' && trainer.open) closeTrainer(); });
 
 /* ---------- big rest button ---------- */
 let big = false;
