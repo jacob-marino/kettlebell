@@ -122,7 +122,10 @@ h2{font-family:var(--display);font-weight:700;font-size:28px;line-height:1.05;ma
 .video{display:inline-block;color:var(--c-work);font-weight:600;text-decoration:none;margin-bottom:8px}
 .video:hover{text-decoration:underline}
 ul.ex{list-style:none;margin:0;padding:0}
-ul.ex li{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:11px 0;border-bottom:1px solid var(--line)}
+ul.ex li{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--line)}
+.fig{flex:0 0 auto;width:52px;height:62px;border-radius:12px;background:rgba(127,127,127,.12);color:var(--ink)}
+.fig svg{display:block;width:100%;height:100%}
+.txt{flex:1;min-width:0}
 ul.ex li:last-child{border-bottom:0}
 .name{font-weight:600}
 .reps{display:block;color:var(--muted);font-size:15px;font-weight:400}
@@ -208,7 +211,8 @@ ul.ex li:last-child{border-bottom:0}
   .sub,.meta{font-size:18px}
   .reps{font-size:17px}
   .kg{font-size:17px;padding:4px 10px}
-  ul.ex li{padding:14px 0}
+  ul.ex li{padding:12px 0}
+  .fig{width:60px;height:76px}
   .timer{margin-top:20px}
   .cmds li{font-size:17px}
   .cmds b{font-size:20px}
@@ -253,7 +257,7 @@ ul.ex li:last-child{border-bottom:0}
         <li><b>“Rest”</b><span>Start 60 s rest</span></li>
         <li><b>“Stop”</b><span>End the rest</span></li>
         <li><b>“Round”</b><span>Count a round</span></li>
-        <li><b>“Reset”</b><span>Start over (say twice)</span></li>
+        <li><b>“Reset”</b><span>Start over</span></li>
       </ul>
     </div>
     <p class="sr" id="announce" aria-live="polite" style="position:absolute;left:-9999px"></p>
@@ -381,6 +385,117 @@ const todayIdx = new Date().getDay();
 let selected = todayIdx;
 let rounds = 0;
 
+/* ---------- exercise figures: small looping stick-figure animations ---------- */
+// A side-on figure facing right. Each pose gives the hip position, torso lean (degrees), the hand's offset
+// from the shoulder, both feet and the bell's offset from the hand; elbows and knees are worked out from those.
+const FIG = {torso:26, head:8.5, arm:11, leg:19};
+const STAND = {hip:[50,57], lean:0, arm:[0,22], foot:[52,94], foot2:[46,94], bell:[0,6]};
+const KNEEL = {hip:[46,74], foot:[28,94], foot2:[24,94]};
+const HKNEEL = {hip:[46,74], foot:[64,94], foot2:[26,94]};
+const pose = (...parts) => Object.assign({}, STAND, ...parts);
+const frame = (p, hold) => ({p, hold:hold || 0});
+const RACK = {arm:[9,4], bell:[3,4]};
+const HALO = [[13,-9],[2,-21],[-12,-9],[0,2]];
+const SWING = (hold) => [frame(pose({hip:[36,64], lean:62, arm:[-12,18]}), hold), frame(pose({arm:[22,-2], bell:[3,6]}), 150)];
+const halo = base => ({move:380, frames:HALO.map(a => frame(pose(base, {arm:a, bell:[0,0]})))});
+const sweep = (base, a) => ({move:380, frames:[a[0],a[1],a[2],a[1]].map(v => frame(pose(base, {arm:v, bell:[0,0]})))});
+const SQUAT = {hip:[40,78], lean:14};
+const HINGE = {hip:[38,64], lean:58};
+const ANIMS = {
+  'Around the world':  sweep({}, [[12,18],[0,22],[-12,18]]),
+  'Halo':              halo({}),
+  'Figure 8':          {move:400, frames:[[6,18],[-12,20],[-20,10],[-12,20]].map(v => frame(pose({hip:[42,66], lean:50, foot:[58,94], foot2:[40,94]}, {arm:v, bell:[0,0]})))},
+  'Pullovers':         {kb:1, kb2:1, move:700, frames:[frame(pose({hip:[34,88], lean:90, foot:[18,94], foot2:[14,94], arm:[0,-22], bell:[0,-5]}), 200), frame(pose({hip:[34,88], lean:90, foot:[18,94], foot2:[14,94], arm:[20,-8], bell:[0,-5]}), 200)]},
+  'Goblet squat':      {move:650, frames:[frame(pose({arm:[9,5], bell:[1,6]}), 200), frame(pose(SQUAT, {arm:[9,5], bell:[1,6]}), 200)]},
+  'Swings':            {move:520, frames:SWING(150)},
+  'Dead stop swings':  {move:520, frames:SWING(700)},
+  'Clean & squat':     {move:450, frames:[frame(pose({arm:[2,22]}), 200), frame(pose(RACK), 100), frame(pose(SQUAT, RACK), 300), frame(pose(RACK), 100)]},
+  'Overhead press':    {move:600, frames:[frame(pose(RACK), 250), frame(pose({arm:[1,-22], bell:[0,-6]}), 250)]},
+  'Rows':              {move:600, frames:[frame(pose(HINGE, {arm:[0,22]}), 150), frame(pose(HINGE, {arm:[-12,10]}), 250)]},
+  'March hold':        {move:350, frames:[frame(pose(RACK), 150), frame(pose(RACK, {foot:[60,78]}), 600), frame(pose(RACK), 150), frame(pose(RACK, {foot2:[58,78]}), 600)]},
+  'Half-kneeling halo':halo(HKNEEL),
+  'Half-kneeling upright row': {eb:-1, move:550, frames:[frame(pose(HKNEEL, {arm:[1,22]}), 200), frame(pose(HKNEEL, {arm:[8,-8], bell:[2,5]}), 250)]},
+  'Kickstand squat':   {move:650, frames:[frame(pose({foot2:[38,93], arm:[9,5], bell:[1,6]}), 200), frame(pose({hip:[43,72], lean:16, foot2:[36,93], arm:[9,5], bell:[1,6]}), 200)]},
+  'Wood chop':         {move:600, frames:[frame(pose(KNEEL, {lean:-8, arm:[-4,-21], bell:[0,-4]}), 150), frame(pose(KNEEL, {lean:14, arm:[14,16], bell:[2,3]}), 150)]},
+  'High pull':         {eb:-1, move:500, frames:[frame(pose(KNEEL, {arm:[1,22]}), 200), frame(pose(KNEEL, {arm:[10,-12], bell:[2,5]}), 250)]},
+  'Curl + press':      {move:450, frames:[frame(pose(KNEEL, {arm:[1,22]}), 100), frame(pose(KNEEL, RACK), 100), frame(pose(KNEEL, {arm:[1,-22], bell:[0,-6]}), 250), frame(pose(KNEEL, RACK), 100)]},
+  'Head halo':         halo(KNEEL),
+  'Hip halo':          sweep(KNEEL, [[12,18],[0,22],[-12,18]])
+};
+
+function ik(a, b, l1, l2, side){ // two-bone joint (elbow/knee) between start a and end b; side = which way it bends
+  let dx = b[0]-a[0], dy = b[1]-a[1], d = Math.hypot(dx, dy) || 0.001;
+  const max = l1 + l2 - 0.05;
+  if(d > max){ dx *= max/d; dy *= max/d; d = max; }
+  const ux = dx/d, uy = dy/d, x = (d*d + l1*l1 - l2*l2) / (2*d), h = Math.sqrt(Math.max(0, l1*l1 - x*x));
+  return {joint:[a[0] + ux*x - uy*h*side, a[1] + uy*x + ux*h*side], end:[a[0]+dx, a[1]+dy]};
+}
+const mix = (a, b, t) => Array.isArray(a) ? a.map((v,i) => v + (b[i]-v)*t) : a + (b-a)*t;
+function poseAt(anim, ms){
+  const fr = anim.frames, n = fr.length;
+  let total = 0; fr.forEach(f => total += f.hold + anim.move);
+  let t = ms % total;
+  for(let i=0;i<n;i++){
+    if(t < fr[i].hold) return fr[i].p;
+    t -= fr[i].hold;
+    if(t < anim.move){
+      const e = t/anim.move, s = e*e*(3-2*e), a = fr[i].p, b = fr[(i+1)%n].p, o = {};
+      for(const k in a) o[k] = mix(a[k], b[k], s);
+      return o;
+    }
+    t -= anim.move;
+  }
+  return fr[0].p;
+}
+function buildFig(el, kg){
+  const NS = 'http://www.w3.org/2000/svg';
+  const mk = (name, attrs) => { const e = document.createElementNS(NS, name); for(const k in attrs) e.setAttribute(k, attrs[k]); return e; };
+  const color = KG[kg] || '#5B636C';
+  const stroke = {fill:'none', stroke:'currentColor', 'stroke-width':4.4, 'stroke-linecap':'round', 'stroke-linejoin':'round'};
+  const svg = mk('svg', {viewBox:'8 -8 84 108', 'aria-hidden':'true', focusable:'false'});
+  const legBack = mk('polyline', Object.assign({opacity:.4}, stroke)), torso = mk('line', stroke), legFront = mk('polyline', stroke), arm = mk('polyline', stroke);
+  const head = mk('circle', {r:5.5, fill:'currentColor'});
+  const bell = mk('g', {});
+  bell.append(mk('path', {d:'M-3.6 -3.6 Q0 -11 3.6 -3.6', fill:'none', stroke:color, 'stroke-width':2.4, 'stroke-linecap':'round'}), mk('circle', {r:5.2, fill:color}));
+  svg.append(mk('line', {x1:8, x2:92, y1:95.5, y2:95.5, stroke:'var(--line)', 'stroke-width':2, 'stroke-linecap':'round'}), legBack, torso, legFront, head, arm, bell);
+  el.appendChild(svg);
+  const pts = list => list.map(v => v[0].toFixed(1) + ',' + v[1].toFixed(1)).join(' ');
+  return function draw(p, anim){
+    const r = p.lean * Math.PI/180, s = Math.sin(r), c = Math.cos(r);
+    const neck = [p.hip[0] + FIG.torso*s, p.hip[1] - FIG.torso*c];
+    const kb = anim.kb || -1, kb2 = anim.kb2 || kb;
+    const a = ik(neck, [neck[0]+p.arm[0], neck[1]+p.arm[1]], FIG.arm, FIG.arm, anim.eb || 1);
+    const l1 = ik(p.hip, p.foot, FIG.leg, FIG.leg, kb), l2 = ik(p.hip, p.foot2, FIG.leg, FIG.leg, kb2);
+    legBack.setAttribute('points', pts([p.hip, l2.joint, l2.end]));
+    legFront.setAttribute('points', pts([p.hip, l1.joint, l1.end]));
+    torso.setAttribute('x1', p.hip[0].toFixed(1)); torso.setAttribute('y1', p.hip[1].toFixed(1));
+    torso.setAttribute('x2', neck[0].toFixed(1)); torso.setAttribute('y2', neck[1].toFixed(1));
+    head.setAttribute('cx', (neck[0] + FIG.head*s).toFixed(1)); head.setAttribute('cy', (neck[1] - FIG.head*c).toFixed(1));
+    arm.setAttribute('points', pts([neck, a.joint, a.end]));
+    bell.setAttribute('transform', `translate(${(a.end[0]+p.bell[0]).toFixed(1)} ${(a.end[1]+p.bell[1]).toFixed(1)})`);
+  };
+}
+const figs = [];
+const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+function mountFigures(root){
+  for(let i = figs.length - 1; i >= 0; i--) if(!figs[i].el.isConnected) figs.splice(i, 1); // drop figures from lists that were replaced
+  root.querySelectorAll('.fig').forEach(el => {
+    const anim = ANIMS[el.dataset.anim]; if(!anim) return;
+    const draw = buildFig(el, el.dataset.kg);
+    const startMs = reduceMotion.matches ? anim.frames[0].hold + anim.move : 0; // reduced motion: one still pose
+    draw(poseAt(anim, startMs), anim);
+    figs.push({el, anim, draw});
+  });
+}
+let lastFigDraw = 0;
+function tickFigs(ts){
+  requestAnimationFrame(tickFigs);
+  if(document.hidden || reduceMotion.matches || ts - lastFigDraw < 33) return; // ~30 frames a second is plenty
+  lastFigDraw = ts;
+  for(const f of figs) if(f.el.offsetParent !== null) f.draw(poseAt(f.anim, ts), f.anim); // skip hidden ones
+}
+requestAnimationFrame(tickFigs);
+
 /* ---------- rendering ---------- */
 function kgChips(list){
   if(!list || !list.length) return '<span class="or">bodyweight</span>';
@@ -388,8 +503,9 @@ function kgChips(list){
 }
 function renderList(el, items){
   el.innerHTML = items.map(i =>
-    `<li><span><span class="name">${i.name}</span><span class="reps">${i.reps}</span></span><span class="kgs">${kgChips(i.kg)}</span></li>`
+    `<li><span class="fig" data-anim="${i.name}" data-kg="${(i.kg && i.kg[0]) || ''}"></span><span class="txt"><span class="name">${i.name}</span><span class="reps">${i.reps}</span></span><span class="kgs">${kgChips(i.kg)}</span></li>`
   ).join('');
+  mountFigures(el);
 }
 function renderDays(){
   $('days').innerHTML = STRIP.map(d =>
