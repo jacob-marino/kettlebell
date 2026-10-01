@@ -613,7 +613,7 @@ function updateVideo(){
 
 /* ---------- voice commands ---------- */
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-const voice = {on:false, rec:null, lastAt:0, startedAt:0, gotSound:false, everSound:false, fails:0, timer:0};
+const voice = {on:false, rec:null, lastAt:0, startedAt:0, gotSound:false, everSound:false, fails:0, timer:0, fired:new Set()};
 const HINT = 'Listening. Say one of these commands.';
 function setVoiceUI(on, msg){
   $('voiceBtn').setAttribute('aria-pressed', on);
@@ -621,34 +621,41 @@ function setVoiceUI(on, msg){
   $('voiceHint').textContent = msg || HINT;
 }
 // Returns the name of the command that ran, '' if the phrase wasn't a command, or null if it was a repeat to ignore.
+// Command words, including common mishearings of short words. Checked in this order.
+const COMMANDS = [
+  ['stop rest',     /\b(stop|stopped|cancel)\b/],
+  ['pause',         /\b(pause|paused|paws)\b/],
+  ['resume',        /\b(resume|resumed|continue|unpause)\b/],
+  ['skip warm-up',  /\b(skip|skipped)\b/],
+  ['rest',          /\b(rest|rests|wrest|west|best|breather|break)\b/],
+  ['round',         /\b(round|rounds|ground)\b/],
+  ['start session', /\b(start|starts|begin)\b/]
+];
+function matchCommand(texts){
+  for(const text of texts){ // Chrome's best guess first, then its alternatives
+    const t = text.toLowerCase();
+    for(const [name, re] of COMMANDS) if(re.test(t)) return name;
+  }
+  return '';
+}
+function runCommand(name){
+  switch(name){
+    case 'stop rest': if(rest.running){ stopRest(); beep(1,520); } break;
+    case 'pause': pauseAll(); break;
+    case 'resume': resumeAll(); break;
+    case 'skip warm-up': if(skipWarm()) beep(1,740); break;
+    case 'rest': startRest(); beep(1,880); break;
+    case 'round': $('roundPlus').click(); beep(1,740); break;
+    case 'start session': if(!session.running) $('startBtn').click(); break; // never pauses a running session
+  }
+}
+// text: one phrase or a list of alternative transcripts of it.
+// Returns the name of the command that ran, '' if it wasn't a command, or null if it was a repeat to ignore.
 function handleSpeech(text){
-  const t = text.toLowerCase();
   const now = Date.now();
   if(now - voice.lastAt < 1500) return null; // ignore repeats of the same phrase
-  let hit = '';
-  if(/\b(stop|cancel)\b/.test(t)){
-    if(rest.running){ stopRest(); beep(1,520); }
-    hit = 'stop rest';
-  } else if(/\b(pause|paused)\b/.test(t)){
-    pauseAll();
-    hit = 'pause';
-  } else if(/\b(resume|continue|unpause)\b/.test(t)){
-    resumeAll();
-    hit = 'resume';
-  } else if(/\b(skip|skipped)\b/.test(t)){
-    if(skipWarm()) beep(1,740);
-    hit = 'skip warm-up';
-  } else if(/\b(rest|rests|wrest|breather|break)\b/.test(t)){
-    startRest(); beep(1,880);
-    hit = 'rest';
-  } else if(/\b(round|rounds)\b/.test(t)){
-    $('roundPlus').click(); beep(1,740);
-    hit = 'round';
-  } else if(/\b(start|begin)\b/.test(t)){
-    if(!session.running) $('startBtn').click(); // never pauses a running session
-    hit = 'start session';
-  }
-  if(hit) voice.lastAt = now;
+  const hit = matchCommand(Array.isArray(text) ? text : [text]);
+  if(hit){ voice.lastAt = now; runCommand(hit); }
   return hit;
 }
 const VOICE_ERRORS = {
@@ -670,8 +677,9 @@ async function startVoice(){
   const rec = new SR();
   rec.lang = navigator.language || 'en-AU';
   rec.continuous = true;
-  rec.interimResults = false;
-  rec.onstart = () => { voice.startedAt = Date.now(); voice.gotSound = false; };
+  rec.interimResults = true; // act on a command as soon as it's recognised, not 1-2 s later when Chrome finalises it
+  rec.maxAlternatives = 3;
+  rec.onstart = () => { voice.startedAt = Date.now(); voice.gotSound = false; voice.fired = new Set(); };
   rec.onsoundstart = () => {
     voice.gotSound = true; voice.fails = 0;
     if(!voice.everSound){ voice.everSound = true; $('voiceHint').textContent = 'The microphone is picking up sound. Say a command.'; }
@@ -679,10 +687,15 @@ async function startVoice(){
   rec.onresult = e => {
     voice.gotSound = true; voice.fails = 0;
     for(let k=e.resultIndex;k<e.results.length;k++){
-      if(!e.results[k].isFinal) continue;
-      const said = e.results[k][0].transcript.trim();
-      const hit = handleSpeech(said);
-      if(hit !== null) $('voiceHint').textContent = hit ? `Heard “${said}” → ${hit}` : `Heard “${said}” (not a command)`;
+      const r = e.results[k];
+      const alts = Array.from(r, a => a.transcript.trim());
+      const said = alts[0];
+      if(voice.fired.has(k)) continue; // already acted on this utterance (interim result came first)
+      if(!r.isFinal && said.split(/\s+/).length > 3) continue; // don't act on half-heard sentences
+      const hit = handleSpeech(alts);
+      if(hit === null) continue;
+      if(hit){ voice.fired.add(k); $('voiceHint').textContent = `Heard “${said}” → ${hit}`; }
+      else $('voiceHint').textContent = r.isFinal ? `Heard “${said}” (not a command)` : `Hearing “${said}”…`;
     }
   };
   rec.onerror = e => {
