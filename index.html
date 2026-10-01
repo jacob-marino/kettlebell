@@ -569,34 +569,44 @@ function updateVideo(){
 
 /* ---------- voice commands ---------- */
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-const voice = {on:false, rec:null, lastAt:0};
+const voice = {on:false, rec:null, lastAt:0, startedAt:0, gotAudio:false, fails:0, timer:0};
 const HINT = 'Listening. Say one of these commands.';
 function setVoiceUI(on, msg){
   $('voiceBtn').setAttribute('aria-pressed', on);
   $('voiceBtn').textContent = on ? 'Voice commands on (listening)' : 'Turn on voice commands';
   $('voiceHint').textContent = msg || HINT;
 }
+// Returns the name of the command that ran, '' if the phrase wasn't a command, or null if it was a repeat to ignore.
 function handleSpeech(text){
   const t = text.toLowerCase();
   const now = Date.now();
-  if(now - voice.lastAt < 1500) return; // ignore repeats of the same phrase
+  if(now - voice.lastAt < 1500) return null; // ignore repeats of the same phrase
+  let hit = '';
   if(/\b(stop|cancel)\b/.test(t)){
     if(rest.running){ stopRest(); beep(1,520); }
-    voice.lastAt = now;
+    hit = 'stop rest';
   } else if(/\b(skip|skipped)\b/.test(t)){
     if(skipWarm()) beep(1,740);
-    voice.lastAt = now;
+    hit = 'skip warm-up';
   } else if(/\b(rest|rests|wrest|breather|break)\b/.test(t)){
     startRest(); beep(1,880);
-    voice.lastAt = now;
+    hit = 'rest';
   } else if(/\b(round|rounds)\b/.test(t)){
     $('roundPlus').click(); beep(1,740);
-    voice.lastAt = now;
+    hit = 'round';
   } else if(/\b(start|begin)\b/.test(t)){
     if(!session.running) $('startBtn').click(); // never pauses a running session
-    voice.lastAt = now;
+    hit = 'start session';
   }
+  if(hit) voice.lastAt = now;
+  return hit;
 }
+const VOICE_ERRORS = {
+  'not-allowed':'The microphone is blocked for this page. Click the padlock in the address bar, set Microphone to Allow, then tap the button again.',
+  'service-not-allowed':'The microphone is blocked for this page. Click the padlock in the address bar, set Microphone to Allow, then tap the button again.',
+  'audio-capture':'No microphone was found, or another app is using it. Check your sound settings, then tap the button again.',
+  'network':'Chrome’s speech service couldn’t be reached. Check your internet connection, then tap the button again.'
+};
 async function startVoice(){
   if(!window.isSecureContext){ setVoiceUI(false, 'Voice needs the app to be opened from a secure web address (https). It won’t work from a downloaded file.'); return; }
   if(!SR){ setVoiceUI(false, 'Voice commands aren’t supported in this browser. Try Chrome on Android or a computer, or Safari on iPhone.'); return; }
@@ -611,18 +621,42 @@ async function startVoice(){
   rec.lang = navigator.language || 'en-AU';
   rec.continuous = true;
   rec.interimResults = false;
+  rec.onstart = () => { voice.startedAt = Date.now(); voice.gotAudio = false; };
+  rec.onaudiostart = () => { voice.gotAudio = true; voice.fails = 0; };
   rec.onresult = e => {
-    for(let k=e.resultIndex;k<e.results.length;k++){ if(e.results[k].isFinal) handleSpeech(e.results[k][0].transcript); }
+    voice.gotAudio = true; voice.fails = 0;
+    for(let k=e.resultIndex;k<e.results.length;k++){
+      if(!e.results[k].isFinal) continue;
+      const said = e.results[k][0].transcript.trim();
+      const hit = handleSpeech(said);
+      if(hit !== null) $('voiceHint').textContent = hit ? `Heard “${said}” → ${hit}` : `Heard “${said}” (not a command)`;
+    }
   };
   rec.onerror = e => {
     if(e.error==='no-speech' || e.error==='aborted') return;
-    voice.on=false; setVoiceUI(false, `Voice stopped (${e.error}). Tap the button to try again.`);
+    voice.on=false; clearTimeout(voice.timer);
+    setVoiceUI(false, VOICE_ERRORS[e.error] || `Voice stopped (${e.error}). Tap the button to try again.`);
   };
-  rec.onend = () => { if(voice.on){ try{ rec.start(); }catch(err){} } };
-  voice.rec = rec; voice.on = true;
+  rec.onend = () => {
+    if(!voice.on) return;
+    // Chrome ends a session now and then (silence, background tab): restart it. If it keeps ending
+    // straight away without ever hearing audio, back off and then give up with a message.
+    if(document.hidden) voice.fails = 0; // can't listen in a hidden tab; just wait
+    else if(!voice.gotAudio && Date.now() - voice.startedAt < 2000) voice.fails++;
+    else voice.fails = 0;
+    if(voice.fails >= 6){
+      voice.on = false;
+      setVoiceUI(false, 'Voice keeps stopping right after it starts. Keep this tab in front, check Chrome has microphone access for this site and that the right microphone is the Windows default, then tap the button again.');
+      return;
+    }
+    const delay = document.hidden ? 2000 : voice.fails ? Math.min(4000, 400 * 2 ** voice.fails) : 0;
+    clearTimeout(voice.timer);
+    voice.timer = setTimeout(() => { if(voice.on){ try{ rec.start(); }catch(err){} } }, delay);
+  };
+  voice.rec = rec; voice.on = true; voice.fails = 0;
   try{ rec.start(); setVoiceUI(true); }catch(err){ voice.on=false; setVoiceUI(false, 'Voice commands couldn’t start. Reload the page and try again.'); }
 }
-function stopVoice(){ voice.on=false; try{ voice.rec && voice.rec.stop(); }catch(e){} setVoiceUI(false); }
+function stopVoice(){ voice.on=false; clearTimeout(voice.timer); try{ voice.rec && voice.rec.stop(); }catch(e){} setVoiceUI(false); }
 $('voiceBtn').onclick = () => { audio(); voice.on ? stopVoice() : startVoice(); };
 
 /* ---------- big rest button ---------- */
