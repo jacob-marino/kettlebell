@@ -95,7 +95,19 @@ h1{font-family:var(--display);font-weight:700;font-size:44px;line-height:1;margi
 .len .lbl{flex:1;font-weight:600}
 .len .val{font-family:var(--display);font-weight:700;font-size:26px;min-width:58px;text-align:center;font-variant-numeric:tabular-nums}
 .len .btn{padding:8px 14px}
-.autostatus{font-weight:600;margin:0 0 12px;min-height:1.4em}
+.autostatus{font-weight:700;font-size:20px;margin:0 0 12px;min-height:1.4em}
+.autohead{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+/* Big centre popup for the round timer and the rest timer */
+.bigtimer{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:25;width:min(92vw,520px);box-sizing:border-box;padding:22px 24px 20px;border-radius:30px;text-align:center;color:#fff;background:var(--c-work);box-shadow:0 18px 60px rgba(0,0,0,.45)}
+.bigtimer[hidden]{display:none}
+.bigtimer.is-rest{background:var(--c-rest)}
+.bigtimer.is-paused{background:#5B636C}
+.bt-label{font-family:var(--display);font-weight:700;font-size:clamp(30px,6vw,46px);text-transform:uppercase;letter-spacing:1px;line-height:1.1;padding:0 36px}
+.bt-time{font-family:var(--display);font-weight:700;font-variant-numeric:tabular-nums;font-size:clamp(110px,30vw,220px);line-height:.95;margin:4px 0 2px}
+.bt-sub{font-size:clamp(18px,3.4vw,24px);font-weight:600;opacity:.92}
+.bt-bar{height:14px;border-radius:7px;background:rgba(255,255,255,.3);margin-top:14px;overflow:hidden}
+.bt-bar i{display:block;height:100%;width:100%;background:#fff}
+.bt-x{position:absolute;top:12px;right:14px;border:0;background:rgba(255,255,255,.22);color:#fff;font-size:26px;line-height:1;width:40px;height:40px;border-radius:50%}
 .auto .btn.primary{width:100%}
 .auto .btn.primary[aria-pressed="true"]{background:var(--c-rest);color:#fff}
 
@@ -241,6 +253,13 @@ ul.ex li:last-child{border-bottom:0}
 </head>
 <body>
 <div class="flash" id="flash" aria-hidden="true"></div>
+<div class="bigtimer" id="bigTimer" hidden>
+  <button class="bt-x" id="btHide" aria-label="Hide this timer">×</button>
+  <div class="bt-label" id="btLabel"></div>
+  <div class="bt-time" id="btTime" role="timer"></div>
+  <div class="bt-sub" id="btSub"></div>
+  <div class="bt-bar"><i id="btFill"></i></div>
+</div>
 <div class="trainer" id="trainer" hidden role="dialog" aria-modal="true" aria-labelledby="tTitle">
   <div class="tcard">
     <h3 id="tTitle">Train my voice</h3>
@@ -329,7 +348,7 @@ ul.ex li:last-child{border-bottom:0}
       <button class="btn" id="roundPlus">Round done</button>
     </div>
     <div class="auto">
-      <h3>Auto rest</h3>
+      <div class="autohead"><h3>Auto rest</h3><button class="linkbtn" id="popupBtn" aria-pressed="true">Round popup: on</button></div>
       <p class="autohelp">Set how long one round takes. The app starts your 60 s rest after each round, then starts the next round, and counts rounds for you.</p>
       <div class="len">
         <span class="lbl">Round length</span>
@@ -370,14 +389,14 @@ const B_ITEMS = [
 ];
 
 const WORKOUTS = {
-  A:{title:'Full-Body Complex', rounds:4, meta:'4 rounds, rest as needed between rounds',
+  A:{title:'Full-Body Complex', rounds:5, meta:'5 rounds, rest as needed between rounds',
      video:'https://www.facebook.com/watch/?v=1074537532220249', finish:'3-min stretch',
      items:[
-      {name:'Swings', reps:'×8', kg:[16]},
-      {name:'Clean & squat', reps:'×8', kg:[8]},
-      {name:'Overhead press', reps:'×8, both arms', kg:[8]},
+      {name:'Swings', reps:'×10', kg:[16]},
+      {name:'Clean & squat', reps:'×10', kg:[12]},
+      {name:'Overhead press', reps:'×10, both arms', kg:[12]},
       {name:'Rows', reps:'×12, both arms', kg:[12,16]},
-      {name:'March hold', reps:'×6 each leg, 3-sec hold, bell at chest', kg:[8,12]}
+      {name:'Horn curls', reps:'×10', kg:[12]}
      ]},
   B:{title:'Beginner Circuit', rounds:5, meta:'5 rounds, no rest between exercises, rest 1–2 min between rounds',
      video:'https://www.instagram.com/p/DElGscKRVhC/', finish:'3-min stretch', items:B_ITEMS},
@@ -440,7 +459,7 @@ const ANIMS = {
   'Clean & squat':     {move:450, frames:[frame(pose({arm:[2,22]}), 200), frame(pose(RACK), 100), frame(pose(SQUAT, RACK), 300), frame(pose(RACK), 100)]},
   'Overhead press':    {move:600, frames:[frame(pose(RACK), 250), frame(pose({arm:[1,-22], bell:[0,-6]}), 250)]},
   'Rows':              {move:600, frames:[frame(pose(HINGE, {arm:[0,22]}), 150), frame(pose(HINGE, {arm:[-12,10]}), 250)]},
-  'March hold':        {move:350, frames:[frame(pose(RACK), 150), frame(pose(RACK, {foot:[60,78]}), 600), frame(pose(RACK), 150), frame(pose(RACK, {foot2:[58,78]}), 600)]},
+  'Horn curls':        {move:600, frames:[frame(pose({arm:[2,22], bell:[1,6]}), 150), frame(pose({arm:[10,1], bell:[3,-4]}), 250)]},
   'Half-kneeling halo':halo(HKNEEL),
   'Half-kneeling upright row': {eb:-1, move:550, frames:[frame(pose(HKNEEL, {arm:[1,22]}), 200), frame(pose(HKNEEL, {arm:[8,-8], bell:[2,5]}), 250)]},
   'Kickstand squat':   {move:650, frames:[frame(pose({foot2:[38,93], arm:[9,5], bell:[1,6]}), 200), frame(pose({hip:[43,72], lean:16, foot2:[36,93], arm:[9,5], bell:[1,6]}), 200)]},
@@ -594,9 +613,12 @@ async function wake(on){
 document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible' && (session.running||rest.running)) wake(true); });
 
 /* ---------- session timer ---------- */
-const session = {running:false, endAt:0, left:TOTAL, phase:0, done:false};
+const session = {running:false, endAt:0, left:TOTAL, phase:0, done:false, autoStarted:false};
 // Global pause: freezes the session, rest timer and auto rounds together and remembers what was running
 const paused = {on:false, session:false, restLeft:0, autoLeft:0};
+// Big centre popup state: dismissed holds the phase (rest/round) you hid, so the next one shows again
+const popup = {on:true, key:'', dismissed:'', restSeq:0, workSeq:0};
+try{ popup.on = localStorage.getItem('kb-popup') !== '0'; }catch(e){}
 $('bar').innerHTML = PHASES.map(p => `<div class="seg" style="flex:${p.ms};--c:${p.color}"><i></i></div>`).join('');
 $('seglabels').innerHTML = PHASES.map(p => `<span style="flex:${p.ms}">${p.name} ${p.ms/60000} min</span>`).join('');
 
@@ -618,6 +640,9 @@ function drawSession(){
     $('announce').textContent = `${p.name} started`;
     session.phase = i;
   }
+  // Warm-up over (finished or skipped): start the auto round timer once per session; stop it when the workout time is up
+  if(session.running && i >= 1 && !session.autoStarted && !auto.on){ session.autoStarted = true; startAuto(); }
+  if(session.running && i === 2 && auto.on) stopAuto('Workout time is up.');
   if(session.running && left <= 0){
     session.running = false; session.left = 0; session.done = true;
     beep(3, 660); $('announce').textContent = 'Session complete';
@@ -655,7 +680,7 @@ $('startBtn').onclick = () => {
   audio();
   if(paused.on){ resumeAll(); return; }
   if(session.running) return;
-  if(session.done){ session.left = TOTAL; session.done = false; session.phase = 0; }
+  if(session.done){ session.left = TOTAL; session.done = false; session.phase = 0; session.autoStarted = false; }
   session.endAt = Date.now() + session.left; session.running = true;
   session.phase = phaseAt(TOTAL - session.left).i;
   wake(true);
@@ -698,7 +723,7 @@ function skipWarm(){
 }
 $('skipBtn').onclick = () => { audio(); skipWarm(); };
 $('resetBtn').onclick = () => {
-  session.running=false; session.left=TOTAL; session.phase=0; session.done=false;
+  session.running=false; session.left=TOTAL; session.phase=0; session.done=false; session.autoStarted=false;
   paused.on=false; paused.session=false; paused.restLeft=0; paused.autoLeft=0;
   if(auto.on) stopAuto('');
   rounds = 0; renderRounds();
@@ -728,7 +753,7 @@ function drawRest(){
   document.body.classList.toggle('resting', rest.running);
   $('restLabel').textContent = pausedRest ? 'Rest (paused)' : (big && !rest.running) ? 'Tap anywhere here to start rest' : 'Rest';
 }
-function startRest(){ audio(); if(paused.on) resumeAll(); rest.running=true; rest.endAt=Date.now()+REST_MS; rest.lastSec=null; wake(true); drawRest(); }
+function startRest(){ audio(); if(paused.on) resumeAll(); popup.restSeq++; rest.running=true; rest.endAt=Date.now()+REST_MS; rest.lastSec=null; wake(true); drawRest(); }
 function stopRest(){ rest.running=false; paused.restLeft=0; if(!session.running && !auto.on) wake(false); drawRest(); }
 $('restBtn').onclick = e => {
   e.stopPropagation();
@@ -1074,7 +1099,41 @@ function setLen(ms){
 $('lenMinus').onclick = () => setLen(auto.workMs - 30000);
 $('lenPlus').onclick = () => setLen(auto.workMs + 30000);
 
-function autoWork(){ auto.phase='work'; auto.endAt = Date.now() + auto.workMs; beep(2, 988); }
+function autoWork(){ auto.phase='work'; popup.workSeq++; auto.endAt = Date.now() + auto.workMs; beep(2, 988); }
+
+/* ---------- big centre popup (round timer / rest timer) ---------- */
+function drawPopupBtn(){
+  $('popupBtn').setAttribute('aria-pressed', popup.on);
+  $('popupBtn').textContent = 'Round popup: ' + (popup.on ? 'on' : 'off');
+}
+function updateBigTimer(){
+  const now = Date.now(), target = WORKOUTS[SCHEDULE[selected]].rounds;
+  const restShown = rest.running || (paused.on && paused.restLeft > 0);
+  let key = '', label = '', sub = '', left = 0, total = 1, cls = '';
+  if(restShown){
+    left = rest.running ? rest.endAt - now : paused.restLeft; total = REST_MS; cls = 'is-rest';
+    label = 'Rest'; sub = auto.on ? `Next: round ${Math.min(rounds + 1, target)} of ${target}` : 'Catch your breath';
+    key = 'rest-' + popup.restSeq;
+  } else if(auto.on && auto.phase === 'work'){
+    left = paused.on ? paused.autoLeft : auto.endAt - now; total = auto.workMs; cls = 'is-work';
+    label = `Round ${Math.min(rounds + 1, target)} of ${target}`; sub = 'Work';
+    key = 'work-' + popup.workSeq;
+  }
+  popup.key = key;
+  const show = !!key && popup.on && popup.dismissed !== key;
+  $('bigTimer').hidden = !show;
+  if(!show) return;
+  $('bigTimer').className = 'bigtimer ' + cls + (paused.on ? ' is-paused' : '');
+  $('btLabel').textContent = label + (paused.on ? ' (paused)' : '');
+  $('btTime').textContent = fmt(left);
+  $('btSub').textContent = sub;
+  $('btFill').style.width = Math.max(0, Math.min(100, left / total * 100)) + '%';
+}
+$('btHide').onclick = () => { popup.dismissed = popup.key; updateBigTimer(); };
+$('popupBtn').onclick = () => {
+  popup.on = !popup.on; try{ localStorage.setItem('kb-popup', popup.on ? '1' : '0'); }catch(e){}
+  popup.dismissed = ''; drawPopupBtn(); updateBigTimer();
+};
 function startAuto(){ audio(); if(paused.on) resumeAll(); auto.on = true; wake(true); if(rest.running) stopRest(); autoWork(); drawAuto(); }
 function stopAuto(msg){ auto.on = false; if(!session.running && !rest.running) wake(false); drawAuto(msg); }
 $('autoBtn').onclick = () => auto.on ? stopAuto() : startAuto();
@@ -1107,7 +1166,8 @@ drawLen();
 
 renderDay();
 drawSession(); drawRest();
-setInterval(() => { drawSession(); drawRest(); drawAuto(); }, 200);
+drawPopupBtn();
+setInterval(() => { drawSession(); drawRest(); drawAuto(); updateBigTimer(); }, 200);
 </script>
 </body>
 </html>
