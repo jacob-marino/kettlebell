@@ -442,8 +442,16 @@ let selected = todayIdx;
 let rounds = 0;
 // Each day remembers its own round count (for today), and each workout remembers how many rounds it should have
 const todayStr = () => new Date().toLocaleDateString('en-CA');
-let roundsByDay = {}, targets = {};
-try{ const r = JSON.parse(localStorage.getItem('kb-rounds') || 'null'); if(r && r.date === todayStr()) roundsByDay = r.counts || {}; }catch(e){}
+let roundsByDay = {}, targets = {}, roundsDate = todayStr(); // roundsDate: the calendar day the saved counts belong to
+try{ const r = JSON.parse(localStorage.getItem('kb-rounds') || 'null'); if(r && r.date === roundsDate) roundsByDay = r.counts || {}; }catch(e){}
+// End of day: yesterday's counts are dropped as soon as the date changes, even if the page was left open overnight.
+// (Counts saved on an earlier day are also ignored when the page loads.) Never in the middle of a workout.
+function rolloverRounds(){
+  const t = todayStr();
+  if(t === roundsDate) return;
+  if(session.running || paused.on || auto.on || rest.running) return;
+  roundsDate = t; roundsByDay = {}; rounds = 0; renderRounds();
+}
 try{ targets = JSON.parse(localStorage.getItem('kb-targets') || '{}') || {}; }catch(e){}
 const targetRounds = () => targets[SCHEDULE[selected]] || WORKOUTS[SCHEDULE[selected]].rounds;
 
@@ -595,7 +603,7 @@ function renderRounds(){
   $('tVal').textContent = `${t} round${t === 1 ? '' : 's'}`;
   $('workMeta').textContent = WORKOUTS[SCHEDULE[selected]].note;
   roundsByDay[selected] = rounds;
-  try{ localStorage.setItem('kb-rounds', JSON.stringify({date: todayStr(), counts: roundsByDay})); }catch(e){}
+  try{ localStorage.setItem('kb-rounds', JSON.stringify({date: roundsDate, counts: roundsByDay})); }catch(e){}
 }
 function setTarget(n){
   targets[SCHEDULE[selected]] = Math.min(15, Math.max(1, n));
@@ -637,7 +645,7 @@ async function wake(on){
     if(!on && lock){ await lock.release(); lock=null; }
   }catch(e){}
 }
-document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible' && (session.running||rest.running)) wake(true); });
+document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible'){ rolloverRounds(); if(session.running||rest.running) wake(true); } });
 
 /* ---------- session timer ---------- */
 const session = {running:false, endAt:0, left:TOTAL, phase:0, done:false, autoStarted:false};
@@ -1216,7 +1224,7 @@ drawLen();
 renderDay();
 drawSession(); drawRest();
 drawPopupBtn();
-setInterval(() => { drawSession(); drawRest(); drawAuto(); updateBigTimer(); }, 200);
+setInterval(() => { rolloverRounds(); drawSession(); drawRest(); drawAuto(); updateBigTimer(); }, 200);
 </script>
 </body>
 </html>
