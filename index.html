@@ -100,6 +100,10 @@ h1{font-family:var(--display);font-weight:700;font-size:44px;line-height:1;margi
 /* Big centre popup for the round timer and the rest timer */
 .bigtimer{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:25;width:min(92vw,520px);box-sizing:border-box;padding:22px 24px 20px;border-radius:30px;text-align:center;color:#fff;background:var(--c-work);box-shadow:0 18px 60px rgba(0,0,0,.45)}
 .bigtimer[hidden]{display:none}
+.bigtimer.is-ready{background:var(--c-warm);color:#1F2328}
+.bigtimer.is-ready .bt-bar{background:rgba(0,0,0,.18)}
+.bigtimer.is-ready .bt-bar i{background:#1F2328}
+.bigtimer.is-ready .bt-x{background:rgba(0,0,0,.14);color:#1F2328}
 .bigtimer.is-rest{background:var(--c-rest)}
 .bigtimer.is-paused{background:#5B636C}
 .bt-label{font-family:var(--display);font-weight:700;font-size:clamp(30px,6vw,46px);text-transform:uppercase;letter-spacing:1px;line-height:1.1;padding:0 36px}
@@ -617,7 +621,7 @@ renderList($('warmList'), WARMUP.items);
 
 $('days').addEventListener('click', e => {
   const b = e.target.closest('.day'); if(!b) return;
-  selected = +b.dataset.d; if(auto.on) stopAuto(''); renderDay();
+  selected = +b.dataset.d; if(auto.on) stopAuto(''); cancelCountdown(); renderDay();
 });
 $('roundPlus').onclick = () => { if(rounds < targetRounds()) rounds++; renderRounds(); };
 $('roundMinus').onclick = () => { if(rounds > 0) rounds--; renderRounds(); };
@@ -652,7 +656,10 @@ const session = {running:false, endAt:0, left:TOTAL, phase:0, done:false, autoSt
 // Global pause: freezes the session, rest timer and auto rounds together and remembers what was running
 const paused = {on:false, session:false, restLeft:0, autoLeft:0};
 // Big centre popup state: dismissed holds the phase (rest/round) you hid, so the next one shows again
-const popup = {on:true, key:'', dismissed:'', restSeq:0, workSeq:0};
+const popup = {on:true, key:'', dismissed:'', restSeq:0, workSeq:0, readySeq:0};
+// "Get ready": 10 seconds between pressing Start session and the session timer actually starting
+const GET_READY_MS = 10000;
+const countdown = {on:false, endAt:0, lastSec:null};
 try{ popup.on = localStorage.getItem('kb-popup') !== '0'; }catch(e){}
 // Start the auto round timer by itself when the warm-up finishes (on unless you switch it off)
 let autoStartPref = true;
@@ -710,6 +717,13 @@ function drawSession(){
 
   $('startBtn').textContent = session.running ? 'Running' : session.done ? 'Start again' : ((paused.on || elapsed>0) ? 'Resume' : 'Start session');
   $('startBtn').disabled = session.running;
+  if(countdown.on){ // get-ready countdown: the clock shows it and the button cancels it
+    const left = countdown.endAt - Date.now();
+    $('startBtn').textContent = `Cancel start (${Math.max(1, Math.ceil(left / 1000))})`;
+    $('startBtn').disabled = false;
+    $('phaseName').textContent = 'Get ready';
+    $('clock').textContent = fmt(left);
+  }
   $('pauseBtn').textContent = paused.on ? 'Resume' : 'Pause';
   $('pauseBtn').disabled = !paused.on && !(session.running || rest.running || auto.on);
   document.body.classList.toggle('paused', paused.on);
@@ -718,14 +732,34 @@ $('startBtn').onclick = () => {
   audio();
   if(paused.on){ resumeAll(); return; }
   if(session.running) return;
-  // Starting (not resuming from a pause) always begins a fresh set of rounds
-  if(session.done){ session.left = TOTAL; session.done = false; session.phase = 0; }
+  if(countdown.on){ cancelCountdown(); return; } // pressing it again during the countdown cancels
+  beginCountdown();
+};
+function beginCountdown(){
+  // Starting (not resuming from a pause) always begins a fresh set of rounds, after 10 seconds to get into position
+  countdown.on = true; countdown.endAt = Date.now() + GET_READY_MS; countdown.lastSec = null; popup.readySeq++;
   session.autoStarted = false; rounds = 0; renderRounds();
+  wake(true); drawSession();
+}
+function cancelCountdown(){
+  if(!countdown.on) return;
+  countdown.on = false;
+  if(!session.running && !rest.running && !auto.on) wake(false);
+  drawSession(); updateBigTimer();
+}
+function startSessionNow(){ // the countdown reached zero
+  if(session.done){ session.left = TOTAL; session.done = false; session.phase = 0; }
   session.endAt = Date.now() + session.left; session.running = true;
   session.phase = phaseAt(TOTAL - session.left).i;
   wake(true);
   drawSession();
-};
+}
+function tickCountdown(){
+  if(!countdown.on) return;
+  const left = countdown.endAt - Date.now(), sec = Math.ceil(left / 1000);
+  if(left <= 0){ countdown.on = false; startSessionNow(); beep(2, 988); return; }
+  if(sec !== countdown.lastSec){ countdown.lastSec = sec; if(sec <= 3) beep(1, 660); }
+}
 function pauseAll(){
   if(paused.on || !(session.running || rest.running || auto.on)) return false;
   const now = Date.now();
@@ -763,6 +797,7 @@ function skipWarm(){
 }
 $('skipBtn').onclick = () => { audio(); skipWarm(); };
 $('resetBtn').onclick = () => {
+  countdown.on = false;
   session.running=false; session.left=TOTAL; session.phase=0; session.done=false; session.autoStarted=false;
   paused.on=false; paused.session=false; paused.restLeft=0; paused.autoLeft=0;
   if(rest.running) stopRest();
@@ -874,7 +909,7 @@ function runCommand(name){
     case 'skip warm-up': if(skipWarm()) beep(1,740); break;
     case 'rest': startRest(); beep(1,880); break;
     case 'round': $('roundPlus').click(); beep(1,740); break;
-    case 'start session': if(!session.running) $('startBtn').click(); break; // never pauses a running session
+    case 'start session': if(!session.running && !countdown.on) $('startBtn').click(); break; // never pauses a running session or cancels the countdown
   }
 }
 // text: one phrase or a list of alternative transcripts of it.
@@ -1166,8 +1201,12 @@ $('autoStartBtn').onclick = () => {
 function updateBigTimer(){
   const now = Date.now(), target = targetRounds();
   const restShown = rest.running || (paused.on && paused.restLeft > 0);
-  let key = '', label = '', sub = '', left = 0, total = 1, cls = '';
-  if(restShown){
+  let key = '', label = '', sub = '', left = 0, total = 1, cls = '', timeText = '';
+  if(countdown.on){
+    left = countdown.endAt - now; total = GET_READY_MS; cls = 'is-ready';
+    label = 'Get ready'; sub = 'Your session starts at zero'; key = 'ready-' + popup.readySeq;
+    timeText = String(Math.max(1, Math.ceil(left / 1000)));
+  } else if(restShown){
     left = rest.running ? rest.endAt - now : paused.restLeft; total = REST_MS; cls = 'is-rest';
     label = 'Rest'; sub = auto.on ? `Next: round ${Math.min(rounds + 1, target)} of ${target}` : 'Catch your breath';
     key = 'rest-' + popup.restSeq;
@@ -1182,7 +1221,7 @@ function updateBigTimer(){
   if(!show) return;
   $('bigTimer').className = 'bigtimer ' + cls + (paused.on ? ' is-paused' : '');
   $('btLabel').textContent = label + (paused.on ? ' (paused)' : '');
-  $('btTime').textContent = fmt(left);
+  $('btTime').textContent = timeText || fmt(left);
   $('btSub').textContent = sub;
   $('btFill').style.width = Math.max(0, Math.min(100, left / total * 100)) + '%';
 }
@@ -1224,7 +1263,7 @@ drawLen();
 renderDay();
 drawSession(); drawRest();
 drawPopupBtn();
-setInterval(() => { rolloverRounds(); drawSession(); drawRest(); drawAuto(); updateBigTimer(); }, 200);
+setInterval(() => { rolloverRounds(); tickCountdown(); drawSession(); drawRest(); drawAuto(); updateBigTimer(); }, 200);
 </script>
 </body>
 </html>
