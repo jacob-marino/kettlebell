@@ -166,6 +166,11 @@ ul.ex li:last-child{border-bottom:0}
 .finish{margin:10px 0 0;color:var(--muted)}
 
 /* Rounds */
+.metarow{display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px;margin:2px 0 6px}
+.metarow .meta{margin:0;flex:1 1 180px}
+.stepper{display:inline-flex;align-items:center;gap:4px;background:rgba(127,127,127,.14);border-radius:999px;padding:2px}
+.stepper button{width:28px;height:28px;border:0;border-radius:50%;background:var(--surface);color:var(--ink);font-weight:700;font-size:18px;line-height:1;padding:0}
+.stepper span{min-width:74px;text-align:center;font-weight:600;font-size:15px}
 .rounds{display:flex;align-items:center;gap:12px;margin:14px 0 4px}
 .rounds .count{font-family:var(--display);font-weight:700;font-size:26px;font-variant-numeric:tabular-nums;min-width:74px}
 .rounds .btn{padding:10px 14px}
@@ -338,7 +343,10 @@ ul.ex li:last-child{border-bottom:0}
 
   <section class="block" id="workBlock">
     <div class="bh"><h2 id="workTitle">Workout</h2><span class="now"></span></div>
-    <p class="meta" id="workMeta"></p>
+    <div class="metarow">
+      <div class="stepper" role="group" aria-label="Rounds for this workout"><button id="tMinus" aria-label="Fewer rounds">−</button><span id="tVal">5 rounds</span><button id="tPlus" aria-label="More rounds">+</button></div>
+      <p class="meta" id="workMeta"></p>
+    </div>
     <a class="video" id="workVideo" target="_blank" rel="noopener">Watch the workout video</a>
     <ul class="ex" id="workList"></ul>
     <div class="rounds">
@@ -390,7 +398,7 @@ const B_ITEMS = [
 ];
 
 const WORKOUTS = {
-  A:{title:'Full-Body Complex', rounds:5, meta:'5 rounds, rest as needed between rounds',
+  A:{title:'Full-Body Complex', rounds:5, note:'rest as needed between rounds',
      video:'https://www.facebook.com/watch/?v=1074537532220249', finish:'3-min stretch',
      items:[
       {name:'Swings', reps:'×10', kg:[16]},
@@ -399,9 +407,9 @@ const WORKOUTS = {
       {name:'Rows', reps:'×12, both arms', kg:[12,16]},
       {name:'Horn curls', reps:'×10', kg:[12]}
      ]},
-  B:{title:'Beginner Circuit', rounds:5, meta:'5 rounds, no rest between exercises, rest 1–2 min between rounds',
+  B:{title:'Beginner Circuit', rounds:5, note:'no rest between exercises, rest 1–2 min between rounds',
      video:'https://www.instagram.com/p/DElGscKRVhC/', finish:'3-min stretch', items:B_ITEMS},
-  C:{title:'Kneeling Upper Body', rounds:7, meta:'7 rounds kneeling on padding, rest 60–90 s between rounds',
+  C:{title:'Kneeling Upper Body', rounds:7, note:'kneeling on padding, rest 60–90 s between rounds',
      video:'https://www.facebook.com/share/r/1EQKnVTjWN/', finish:'3-min stretch',
      items:[
       {name:'Wood chop', reps:'×5 each side', kg:[8]},
@@ -410,7 +418,7 @@ const WORKOUTS = {
       {name:'Head halo', reps:'×5', kg:[8]},
       {name:'Hip halo', reps:'×5 each direction', kg:[8]}
      ]},
-  R:{title:'Recovery (light Beginner Circuit)', rounds:3, meta:'3 easy rounds, rest 2 min between rounds',
+  R:{title:'Recovery (light Beginner Circuit)', rounds:3, note:'easy pace, rest 2 min between rounds',
      video:'https://www.instagram.com/p/DElGscKRVhC/', finish:'10-min easy walk',
      items:B_ITEMS.map(i => i.name==='Kickstand squat' ? {...i, kg:[8]} : i)}
 };
@@ -432,6 +440,12 @@ const $ = id => document.getElementById(id);
 const todayIdx = new Date().getDay();
 let selected = todayIdx;
 let rounds = 0;
+// Each day remembers its own round count (for today), and each workout remembers how many rounds it should have
+const todayStr = () => new Date().toLocaleDateString('en-CA');
+let roundsByDay = {}, targets = {};
+try{ const r = JSON.parse(localStorage.getItem('kb-rounds') || 'null'); if(r && r.date === todayStr()) roundsByDay = r.counts || {}; }catch(e){}
+try{ targets = JSON.parse(localStorage.getItem('kb-targets') || '{}') || {}; }catch(e){}
+const targetRounds = () => targets[SCHEDULE[selected]] || WORKOUTS[SCHEDULE[selected]].rounds;
 
 /* ---------- exercise figures: small looping stick-figure animations ---------- */
 // A side-on figure facing right. Each pose gives the hip position, torso lean (degrees), the hand's offset
@@ -565,19 +579,31 @@ function renderDay(){
   $('dayName').textContent = selected===todayIdx ? `Today, ${DAY_NAMES[selected]}` : DAY_NAMES[selected];
   $('dayWorkout').textContent = w.title;
   $('workTitle').textContent = w.title;
-  $('workMeta').textContent = w.meta;
   $('workVideo').href = w.video;
   $('vLink').href = w.video;
   $('vTitle').textContent = w.title + ' video';
   $('finishText').textContent = w.finish;
   renderList($('workList'), w.items);
-  rounds = 0; renderRounds();
+  rounds = roundsByDay[selected] || 0; renderRounds();
+  loadRoundLen();
   renderDays();
 }
 function renderRounds(){
-  const w = WORKOUTS[SCHEDULE[selected]];
-  $('roundCount').textContent = `${rounds} / ${w.rounds}`;
+  const t = targetRounds();
+  if(rounds > t) rounds = t;
+  $('roundCount').textContent = `${rounds} / ${t}`;
+  $('tVal').textContent = `${t} round${t === 1 ? '' : 's'}`;
+  $('workMeta').textContent = WORKOUTS[SCHEDULE[selected]].note;
+  roundsByDay[selected] = rounds;
+  try{ localStorage.setItem('kb-rounds', JSON.stringify({date: todayStr(), counts: roundsByDay})); }catch(e){}
 }
+function setTarget(n){
+  targets[SCHEDULE[selected]] = Math.min(15, Math.max(1, n));
+  try{ localStorage.setItem('kb-targets', JSON.stringify(targets)); }catch(e){}
+  renderRounds();
+}
+$('tMinus').onclick = () => setTarget(targetRounds() - 1);
+$('tPlus').onclick = () => setTarget(targetRounds() + 1);
 $('warmVideo').href = WARMUP.video;
 renderList($('warmList'), WARMUP.items);
 
@@ -585,7 +611,7 @@ $('days').addEventListener('click', e => {
   const b = e.target.closest('.day'); if(!b) return;
   selected = +b.dataset.d; if(auto.on) stopAuto(''); renderDay();
 });
-$('roundPlus').onclick = () => { const max = WORKOUTS[SCHEDULE[selected]].rounds; if(rounds < max) rounds++; renderRounds(); };
+$('roundPlus').onclick = () => { if(rounds < targetRounds()) rounds++; renderRounds(); };
 $('roundMinus').onclick = () => { if(rounds > 0) rounds--; renderRounds(); };
 
 /* ---------- sound ---------- */
@@ -1097,11 +1123,20 @@ $('bigBtn').onclick = () => setBig(!big);
 
 /* ---------- auto rest ---------- */
 const auto = {on:false, phase:'work', endAt:0, workMs:180000};
-try{ const v = +localStorage.getItem('kb-roundlen'); if(v >= 60000 && v <= 600000) auto.workMs = v; }catch(e){}
+// Round length is remembered per workout (A/B/C/R). The old single saved length is the starting point for any workout without its own.
+let roundLens = {}, legacyLen = 180000;
+try{ const v = +localStorage.getItem('kb-roundlen'); if(v >= 60000 && v <= 600000) legacyLen = v; }catch(e){}
+try{ roundLens = JSON.parse(localStorage.getItem('kb-roundlens') || '{}') || {}; }catch(e){}
 function drawLen(){ $('lenVal').textContent = fmt(auto.workMs); }
+function loadRoundLen(){ // the selected day's workout
+  const v = roundLens[SCHEDULE[selected]];
+  auto.workMs = (v >= 60000 && v <= 600000) ? v : legacyLen;
+  drawLen();
+}
 function setLen(ms){
   auto.workMs = Math.min(600000, Math.max(60000, ms));
-  try{ localStorage.setItem('kb-roundlen', auto.workMs); }catch(e){}
+  roundLens[SCHEDULE[selected]] = auto.workMs;
+  try{ localStorage.setItem('kb-roundlens', JSON.stringify(roundLens)); }catch(e){}
   drawLen();
 }
 $('lenMinus').onclick = () => setLen(auto.workMs - 30000);
@@ -1121,7 +1156,7 @@ $('autoStartBtn').onclick = () => {
   drawPopupBtn();
 };
 function updateBigTimer(){
-  const now = Date.now(), target = WORKOUTS[SCHEDULE[selected]].rounds;
+  const now = Date.now(), target = targetRounds();
   const restShown = rest.running || (paused.on && paused.restLeft > 0);
   let key = '', label = '', sub = '', left = 0, total = 1, cls = '';
   if(restShown){
@@ -1153,7 +1188,7 @@ function stopAuto(msg){ auto.on = false; if(!session.running && !rest.running) w
 $('autoBtn').onclick = () => auto.on ? stopAuto('Auto rounds stopped.') : startAuto();
 
 function drawAuto(msg){
-  const target = WORKOUTS[SCHEDULE[selected]].rounds;
+  const target = targetRounds();
   if(auto.on && !paused.on){
     if(auto.phase === 'work' && Date.now() >= auto.endAt){
       if(rounds < target){ rounds++; renderRounds(); }
