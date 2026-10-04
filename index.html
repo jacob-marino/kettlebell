@@ -390,7 +390,7 @@ const WARMUP = {
     {name:'Halo', reps:'×5 each direction', kg:[8]},
     {name:'Figure 8', reps:'×10 (5 each way)', kg:[8]},
     {name:'Pullovers', reps:'×5', kg:[8]},
-    {name:'Goblet squat', reps:'×5', kg:[8]}
+    {name:'Goblet squat', reps:'×8', kg:[8]}
   ]
 };
 
@@ -623,7 +623,24 @@ $('days').addEventListener('click', e => {
   const b = e.target.closest('.day'); if(!b) return;
   selected = +b.dataset.d; if(auto.on) stopAuto(''); cancelCountdown(); renderDay();
 });
-$('roundPlus').onclick = () => { if(rounds < targetRounds()) rounds++; renderRounds(); };
+// "Round done" (button or voice): count the round AND start the rest. With auto rounds running it ends the current
+// round early, exactly as if the round timer had run out, and the next round then starts after the rest as usual.
+function completeRound(){
+  const target = targetRounds();
+  if(rounds >= target) return false;
+  if(paused.on) return false;
+  if(auto.on && auto.phase === 'rest') return false; // already resting after a round: don't count another one
+  rounds++; renderRounds();
+  if(rounds >= target){ // that was the last round: no rest needed
+    if(auto.on) stopAuto(`All ${target} rounds done. Nice work.`);
+    beep(3, 660);
+    return true;
+  }
+  if(auto.on) auto.phase = 'rest';
+  startRest();
+  return true;
+}
+$('roundPlus').onclick = () => { audio(); completeRound(); };
 $('roundMinus').onclick = () => { if(rounds > 0) rounds--; renderRounds(); };
 
 /* ---------- sound ---------- */
