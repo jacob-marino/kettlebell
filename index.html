@@ -440,10 +440,10 @@ const $ = id => document.getElementById(id);
 const todayIdx = new Date().getDay();
 let selected = todayIdx;
 let rounds = 0;
-// Each day remembers its own round count (for today), and each workout remembers how many rounds it should have
+// Each workout remembers its rounds-done count (for today) and how many rounds it should have
 const todayStr = () => new Date().toLocaleDateString('en-CA');
-let roundsByDay = {}, targets = {};
-try{ const r = JSON.parse(localStorage.getItem('kb-rounds') || 'null'); if(r && r.date === todayStr()) roundsByDay = r.counts || {}; }catch(e){}
+let roundsByWorkout = {}, targets = {}; // keyed by workout letter, so days that share a workout (Mon/Thu, Tue/Fri, Wed/Sat) share them
+try{ const r = JSON.parse(localStorage.getItem('kb-rounds2') || 'null'); if(r && r.date === todayStr()) roundsByWorkout = r.counts || {}; }catch(e){}
 try{ targets = JSON.parse(localStorage.getItem('kb-targets') || '{}') || {}; }catch(e){}
 const targetRounds = () => targets[SCHEDULE[selected]] || WORKOUTS[SCHEDULE[selected]].rounds;
 
@@ -584,7 +584,7 @@ function renderDay(){
   $('vTitle').textContent = w.title + ' video';
   $('finishText').textContent = w.finish;
   renderList($('workList'), w.items);
-  rounds = roundsByDay[selected] || 0; renderRounds();
+  rounds = roundsByWorkout[SCHEDULE[selected]] || 0; renderRounds();
   loadRoundLen();
   renderDays();
 }
@@ -594,8 +594,8 @@ function renderRounds(){
   $('roundCount').textContent = `${rounds} / ${t}`;
   $('tVal').textContent = `${t} round${t === 1 ? '' : 's'}`;
   $('workMeta').textContent = WORKOUTS[SCHEDULE[selected]].note;
-  roundsByDay[selected] = rounds;
-  try{ localStorage.setItem('kb-rounds', JSON.stringify({date: todayStr(), counts: roundsByDay})); }catch(e){}
+  roundsByWorkout[SCHEDULE[selected]] = rounds;
+  try{ localStorage.setItem('kb-rounds2', JSON.stringify({date: todayStr(), counts: roundsByWorkout})); }catch(e){}
 }
 function setTarget(n){
   targets[SCHEDULE[selected]] = Math.min(15, Math.max(1, n));
