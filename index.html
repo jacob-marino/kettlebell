@@ -88,15 +88,15 @@ h1{font-family:var(--display);font-weight:700;font-size:44px;line-height:1;margi
 .cmds span{color:var(--muted)}
 
 /* Auto rest */
-.auto{margin-top:18px;background:var(--surface);border-radius:16px;padding:16px}
+.auto{margin-top:14px;background:var(--surface);border-radius:16px;padding:14px 16px}
 .auto h3{font-family:var(--display);font-weight:700;font-size:22px;margin:0 0 4px}
-.autohelp{margin:0 0 12px;color:var(--muted);font-size:15px}
-.len{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.autohelp{margin:0 0 8px;color:var(--muted);font-size:15px}
+.len{display:flex;align-items:center;gap:10px;margin-bottom:8px}
 .len .lbl{flex:1;font-weight:600}
 .len .val{font-family:var(--display);font-weight:700;font-size:26px;min-width:58px;text-align:center;font-variant-numeric:tabular-nums}
 .len .btn{padding:8px 14px}
-.autostatus{font-weight:700;font-size:20px;margin:0 0 12px;min-height:1.4em}
-.autohead{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+.autostatus{font-weight:700;font-size:20px;margin:0 0 8px;min-height:1.4em}
+.autoopts{display:flex;flex-wrap:wrap;justify-content:space-between;gap:2px 12px;margin:0 0 6px}
 /* Big centre popup for the round timer and the rest timer */
 .bigtimer{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:25;width:min(92vw,520px);box-sizing:border-box;padding:22px 24px 20px;border-radius:30px;text-align:center;color:#fff;background:var(--c-work);box-shadow:0 18px 60px rgba(0,0,0,.45)}
 .bigtimer[hidden]{display:none}
@@ -348,7 +348,8 @@ ul.ex li:last-child{border-bottom:0}
       <button class="btn" id="roundPlus">Round done</button>
     </div>
     <div class="auto">
-      <div class="autohead"><h3>Auto rest</h3><button class="linkbtn" id="popupBtn" aria-pressed="true">Round popup: on</button></div>
+      <h3>Auto rest</h3>
+      <div class="autoopts"><button class="linkbtn" id="autoStartBtn" aria-pressed="true">Auto-start after warm-up: on</button><button class="linkbtn" id="popupBtn" aria-pressed="true">Round popup: on</button></div>
       <p class="autohelp">Set how long one round takes. The app starts your 60 s rest after each round, then starts the next round, and counts rounds for you.</p>
       <div class="len">
         <span class="lbl">Round length</span>
@@ -619,6 +620,9 @@ const paused = {on:false, session:false, restLeft:0, autoLeft:0};
 // Big centre popup state: dismissed holds the phase (rest/round) you hid, so the next one shows again
 const popup = {on:true, key:'', dismissed:'', restSeq:0, workSeq:0};
 try{ popup.on = localStorage.getItem('kb-popup') !== '0'; }catch(e){}
+// Start the auto round timer by itself when the warm-up finishes (on unless you switch it off)
+let autoStartPref = true;
+try{ autoStartPref = localStorage.getItem('kb-autostart') !== '0'; }catch(e){}
 $('bar').innerHTML = PHASES.map(p => `<div class="seg" style="flex:${p.ms};--c:${p.color}"><i></i></div>`).join('');
 $('seglabels').innerHTML = PHASES.map(p => `<span style="flex:${p.ms}">${p.name} ${p.ms/60000} min</span>`).join('');
 
@@ -641,7 +645,7 @@ function drawSession(){
     session.phase = i;
   }
   // Warm-up over (finished or skipped): start the auto round timer once per session; stop it when the workout time is up
-  if(session.running && i >= 1 && !session.autoStarted && !auto.on){ session.autoStarted = true; startAuto(); }
+  if(session.running && i >= 1 && !session.autoStarted && !auto.on){ session.autoStarted = true; if(autoStartPref) startAuto(); }
   if(session.running && i === 2 && auto.on) stopAuto('Workout time is up.');
   if(session.running && left <= 0){
     session.running = false; session.left = 0; session.done = true;
@@ -680,7 +684,9 @@ $('startBtn').onclick = () => {
   audio();
   if(paused.on){ resumeAll(); return; }
   if(session.running) return;
-  if(session.done){ session.left = TOTAL; session.done = false; session.phase = 0; session.autoStarted = false; }
+  // Starting (not resuming from a pause) always begins a fresh set of rounds
+  if(session.done){ session.left = TOTAL; session.done = false; session.phase = 0; }
+  session.autoStarted = false; rounds = 0; renderRounds();
   session.endAt = Date.now() + session.left; session.running = true;
   session.phase = phaseAt(TOTAL - session.left).i;
   wake(true);
@@ -725,10 +731,12 @@ $('skipBtn').onclick = () => { audio(); skipWarm(); };
 $('resetBtn').onclick = () => {
   session.running=false; session.left=TOTAL; session.phase=0; session.done=false; session.autoStarted=false;
   paused.on=false; paused.session=false; paused.restLeft=0; paused.autoLeft=0;
-  if(auto.on) stopAuto('');
+  if(rest.running) stopRest();
+  stopAuto(''); // always: clears the auto rounds and their status line, even if they were already stopped
+  popup.dismissed = '';
   rounds = 0; renderRounds();
   if(!rest.running) wake(false);
-  drawSession();
+  drawSession(); drawRest(); updateBigTimer();
 };
 
 /* ---------- rest timer ---------- */
@@ -1105,7 +1113,13 @@ function autoWork(){ auto.phase='work'; popup.workSeq++; auto.endAt = Date.now()
 function drawPopupBtn(){
   $('popupBtn').setAttribute('aria-pressed', popup.on);
   $('popupBtn').textContent = 'Round popup: ' + (popup.on ? 'on' : 'off');
+  $('autoStartBtn').setAttribute('aria-pressed', autoStartPref);
+  $('autoStartBtn').textContent = 'Auto-start after warm-up: ' + (autoStartPref ? 'on' : 'off');
 }
+$('autoStartBtn').onclick = () => {
+  autoStartPref = !autoStartPref; try{ localStorage.setItem('kb-autostart', autoStartPref ? '1' : '0'); }catch(e){}
+  drawPopupBtn();
+};
 function updateBigTimer(){
   const now = Date.now(), target = WORKOUTS[SCHEDULE[selected]].rounds;
   const restShown = rest.running || (paused.on && paused.restLeft > 0);
@@ -1136,7 +1150,7 @@ $('popupBtn').onclick = () => {
 };
 function startAuto(){ audio(); if(paused.on) resumeAll(); auto.on = true; wake(true); if(rest.running) stopRest(); autoWork(); drawAuto(); }
 function stopAuto(msg){ auto.on = false; if(!session.running && !rest.running) wake(false); drawAuto(msg); }
-$('autoBtn').onclick = () => auto.on ? stopAuto() : startAuto();
+$('autoBtn').onclick = () => auto.on ? stopAuto('Auto rounds stopped.') : startAuto();
 
 function drawAuto(msg){
   const target = WORKOUTS[SCHEDULE[selected]].rounds;
