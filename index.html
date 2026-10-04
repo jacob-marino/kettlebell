@@ -218,6 +218,13 @@ ul.ex li:last-child{border-bottom:0}
   body.big .restinner{min-height:18vh}
 }
 
+/* 1920x1080-sized windows (about 800-1000 px tall): slightly tighter exercise rows so six-exercise workouts still fit */
+@media (min-width:1000px) and (min-height:620px) and (max-height:1000px){
+  .fig{width:44px;height:56px}
+  ul.ex li{padding:7px 0;gap:10px}
+  section.block{padding-top:6px;padding-bottom:6px;margin-bottom:14px}
+}
+
 /* Short windows (e.g. 1080p display at 125-150% Windows scaling): tighter left column */
 @media (min-width:1000px) and (min-height:620px) and (max-height:820px){
   h1{font-size:36px}
@@ -250,8 +257,9 @@ ul.ex li:last-child{border-bottom:0}
   .sub,.meta{font-size:18px}
   .reps{font-size:17px}
   .kg{font-size:17px;padding:4px 10px}
-  ul.ex li{padding:12px 0}
-  .fig{width:60px;height:76px}
+  ul.ex li{padding:8px 0}
+  .fig{width:50px;height:64px}
+  section.block{margin-bottom:16px}
   .timer{margin-top:20px}
   .cmds li{font-size:17px}
   .cmds b{font-size:20px}
@@ -390,7 +398,8 @@ const WARMUP = {
     {name:'Halo', reps:'×5 each direction', kg:[8]},
     {name:'Figure 8', reps:'×10 (5 each way)', kg:[8]},
     {name:'Pullovers', reps:'×5', kg:[8]},
-    {name:'Goblet squat', reps:'×5', kg:[8]}
+    {name:'Goblet squat', reps:'×5', kg:[8]},
+    {name:'Push-ups', reps:'×5', kg:[]}
   ]
 };
 
@@ -419,6 +428,7 @@ const WORKOUTS = {
       {name:'Wood chop', reps:'×5 each side', kg:[8]},
       {name:'High pull', reps:'×5', kg:[8]},
       {name:'Curl + press', reps:'×5', kg:[8]},
+      {name:'Tricep extension', reps:'×5, both hands overhead', kg:[8]},
       {name:'Head halo', reps:'×5', kg:[8]},
       {name:'Hip halo', reps:'×5 each direction', kg:[8]}
      ]},
@@ -480,6 +490,8 @@ const ANIMS = {
   'Halo':              halo({}),
   'Figure 8':          {move:400, frames:[[6,18],[-12,20],[-20,10],[-12,20]].map(v => frame(pose({hip:[42,66], lean:50, foot:[58,94], foot2:[40,94]}, {arm:v, bell:[0,0]})))},
   'Pullovers':         {kb:1, kb2:1, move:700, frames:[frame(pose({hip:[34,88], lean:90, foot:[18,94], foot2:[14,94], arm:[0,-22], bell:[0,-5]}), 200), frame(pose({hip:[34,88], lean:90, foot:[18,94], foot2:[14,94], arm:[20,-8], bell:[0,-5]}), 200)]},
+  // Push-ups: no bell (bell:null); hands stay on the floor, the body stays in one straight line
+  'Push-ups':          {move:550, frames:[frame(pose({hip:[52,80.5], lean:71, arm:[0.4,21.8], foot:[16,93], foot2:[13,93], bell:null}), 300), frame(pose({hip:[52,89], lean:85, arm:[0.2,7.3], foot:[14,93], foot2:[11,93], bell:null}), 200)]},
   'Goblet squat':      {move:650, frames:[frame(pose({arm:[9,5], bell:[1,6]}), 200), frame(pose(SQUAT, {arm:[9,5], bell:[1,6]}), 200)]},
   'Swings':            {move:520, frames:SWING(150)},
   'Dead stop swings':  {move:520, frames:SWING(700)},
@@ -493,6 +505,7 @@ const ANIMS = {
   'Wood chop':         {move:600, frames:[frame(pose(KNEEL, {lean:-8, arm:[-4,-21], bell:[0,-4]}), 150), frame(pose(KNEEL, {lean:14, arm:[14,16], bell:[2,3]}), 150)]},
   'High pull':         {eb:-1, move:500, frames:[frame(pose(KNEEL, {arm:[1,22]}), 200), frame(pose(KNEEL, {arm:[10,-12], bell:[2,5]}), 250)]},
   'Curl + press':      {move:450, frames:[frame(pose(KNEEL, {arm:[1,22]}), 100), frame(pose(KNEEL, RACK), 100), frame(pose(KNEEL, {arm:[1,-22], bell:[0,-6]}), 250), frame(pose(KNEEL, RACK), 100)]},
+  'Tricep extension':  {move:600, frames:[frame(pose(KNEEL, {arm:[1,-22], bell:[0,-6]}), 200), frame(pose(KNEEL, {arm:[-8,-3], bell:[-2,5]}), 250)]},
   'Head halo':         halo(KNEEL),
   'Hip halo':          sweep(KNEEL, [[12,18],[0,22],[-12,18]])
 };
@@ -514,7 +527,7 @@ function poseAt(anim, ms){
     t -= fr[i].hold;
     if(t < anim.move){
       const e = t/anim.move, s = e*e*(3-2*e), a = fr[i].p, b = fr[(i+1)%n].p, o = {};
-      for(const k in a) o[k] = mix(a[k], b[k], s);
+      for(const k in a) o[k] = (a[k] == null || b[k] == null) ? a[k] : mix(a[k], b[k], s); // bell can be null (no bell)
       return o;
     }
     t -= anim.move;
@@ -546,7 +559,10 @@ function buildFig(el, kg){
     torso.setAttribute('x2', neck[0].toFixed(1)); torso.setAttribute('y2', neck[1].toFixed(1));
     head.setAttribute('cx', (neck[0] + FIG.head*s).toFixed(1)); head.setAttribute('cy', (neck[1] - FIG.head*c).toFixed(1));
     arm.setAttribute('points', pts([neck, a.joint, a.end]));
-    bell.setAttribute('transform', `translate(${(a.end[0]+p.bell[0]).toFixed(1)} ${(a.end[1]+p.bell[1]).toFixed(1)})`);
+    if(p.bell){
+      bell.style.display = '';
+      bell.setAttribute('transform', `translate(${(a.end[0]+p.bell[0]).toFixed(1)} ${(a.end[1]+p.bell[1]).toFixed(1)})`);
+    }else bell.style.display = 'none'; // bodyweight exercise
   };
 }
 const figs = [];
